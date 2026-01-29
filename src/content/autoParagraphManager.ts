@@ -10,7 +10,6 @@ import {
 import {
   createOverlay,
   updateOverlay,
-  removeOverlay,
   removeAllOverlays,
   toggleAllViews,
   showErrorState,

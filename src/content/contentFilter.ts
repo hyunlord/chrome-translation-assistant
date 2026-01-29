@@ -83,11 +83,6 @@ const EXCLUDED_SELECTORS = [
 ]
 
 /**
- * Attributes that indicate hidden elements
- */
-const EXCLUDED_ATTRIBUTES = ['aria-hidden="true"', 'hidden']
-
-/**
  * Code-related element selectors
  */
 const CODE_SELECTORS = ['pre', 'code', 'kbd', 'samp', 'var', '.code', '.highlight']

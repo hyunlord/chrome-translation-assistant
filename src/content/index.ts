@@ -66,7 +66,7 @@ chrome.storage.onChanged.addListener((changes, areaName) => {
 })
 
 // Listen for messages from background script
-chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+chrome.runtime.onMessage.addListener((message, _sender, _sendResponse) => {
   console.log('Content script received message:', message)
 
   switch (message.type) {

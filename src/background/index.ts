@@ -131,7 +131,7 @@ async function handleTranslation(payload: any, sendResponse: (response: any) => 
   console.log('Translation requested:', payload)
 
   try {
-    const { text, action, context } = payload
+    const { text, context } = payload
 
     // Get settings
     const settings = await localStorage.get<any>('settings')

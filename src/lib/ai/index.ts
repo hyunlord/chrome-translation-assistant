@@ -99,8 +99,8 @@ export class AIProviderManager {
 }
 
 // Re-export types and classes
-export {
-  BaseAIProvider,
+export { BaseAIProvider } from './baseProvider'
+export type {
   AIProviderType,
   AIProviderConfig,
   TranslationRequest,

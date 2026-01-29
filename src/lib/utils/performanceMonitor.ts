@@ -66,7 +66,7 @@ export class PerformanceMonitor {
   getAllStats(): Record<string, any> {
     const stats: Record<string, any> = {}
 
-    this.metrics.forEach((values, key) => {
+    this.metrics.forEach((_values, key) => {
       stats[key] = this.getStats(key)
     })
 

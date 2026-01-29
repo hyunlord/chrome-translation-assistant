@@ -179,7 +179,7 @@ export class ChromeSyncStorage {
  */
 export type StorageChangeListener = (
   changes: { [key: string]: chrome.storage.StorageChange },
-  areaName: 'local' | 'sync' | 'managed'
+  areaName: 'local' | 'sync' | 'managed' | 'session'
 ) => void
 
 export function addStorageListener(listener: StorageChangeListener): void {

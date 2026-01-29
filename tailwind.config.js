@@ -22,6 +22,12 @@ export default {
           800: '#075985',
           900: '#0c4a6e',
         },
+        border: 'hsl(var(--border))',
+        background: 'hsl(var(--background))',
+        foreground: 'hsl(var(--foreground))',
+      },
+      borderColor: {
+        DEFAULT: 'hsl(var(--border))',
       },
     },
   },

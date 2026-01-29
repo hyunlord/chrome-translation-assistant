@@ -11,7 +11,7 @@ interface SelectionInfo {
   }
 }
 
-let selectionTimeout: NodeJS.Timeout | null = null
+let selectionTimeout: ReturnType<typeof setTimeout> | null = null
 
 export function initializeTextSelection() {
   console.log('Translation Assistant: Text selection handler initialized')
@@ -47,7 +47,7 @@ function handleSelectionChange() {
   }
 }
 
-function processSelection(event: MouseEvent) {
+function processSelection(_event: MouseEvent) {
   const selection = window.getSelection()
   if (!selection || selection.rangeCount === 0) {
     return
@@ -149,4 +149,4 @@ function handleTooltipAction(action: 'translate' | 'explain', info: SelectionInf
   hideTooltip()
 }
 
-export { SelectionInfo }
+export type { SelectionInfo }

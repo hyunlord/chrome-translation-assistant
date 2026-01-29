@@ -75,7 +75,7 @@ function handleSelectionChange() {
   }
 }
 
-function handlePDFSelection(event: MouseEvent) {
+function handlePDFSelection(_event: MouseEvent) {
   setTimeout(() => {
     const selection = window.getSelection()
     if (!selection || selection.rangeCount === 0) return

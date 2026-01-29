@@ -93,7 +93,9 @@ export class TranslationCache {
     if (this.cache.size >= this.maxSize) {
       // Remove oldest entry (first in Map)
       const firstKey = this.cache.keys().next().value
-      this.cache.delete(firstKey)
+      if (firstKey !== undefined) {
+        this.cache.delete(firstKey)
+      }
     }
 
     const entry: CacheEntry = {
@@ -238,7 +240,11 @@ export class TranslationCache {
     // Enforce size limit
     while (this.cache.size > this.maxSize) {
       const firstKey = this.cache.keys().next().value
-      this.cache.delete(firstKey)
+      if (firstKey !== undefined) {
+        this.cache.delete(firstKey)
+      } else {
+        break
+      }
     }
   }
 }

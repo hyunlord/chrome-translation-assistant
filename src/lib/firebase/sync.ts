@@ -3,14 +3,11 @@ import {
   collection,
   doc,
   setDoc,
-  getDoc,
   getDocs,
   query,
-  where,
   orderBy,
   limit,
   deleteDoc,
-  type DocumentData,
 } from 'firebase/firestore'
 import { getFirestoreInstance } from './config'
 import { getCurrentUser } from './auth'

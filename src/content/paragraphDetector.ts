@@ -11,7 +11,7 @@ import {
   getComputedFontSize,
   hashString,
 } from '../lib/utils/domUtils'
-import { isExcludedElement, isCodeBlock, shouldTranslate } from './contentFilter'
+import { isExcludedElement, shouldTranslate } from './contentFilter'
 
 /**
  * Settings for paragraph detection
@@ -158,7 +158,7 @@ function scoreParagraph(
   element: HTMLElement,
   text: string,
   isSemantic: boolean,
-  settings: DetectionSettings
+  _settings: DetectionSettings
 ): number {
   let score = 0
 

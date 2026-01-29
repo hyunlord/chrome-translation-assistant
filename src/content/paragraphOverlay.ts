@@ -1,7 +1,5 @@
 // Translation Overlay - UI injection and toggle functionality
 
-import { sanitizeHTML } from '../lib/utils/domUtils'
-
 /**
  * View mode for paragraph display
  */

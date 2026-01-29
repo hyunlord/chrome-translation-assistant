@@ -272,7 +272,7 @@ export class ParagraphObserverManager {
   resume(): void {
     // Re-observe all tracked elements
     if (this.intersectionObserver) {
-      this.observedElements.forEach((element, paragraphId) => {
+      this.observedElements.forEach((element, _paragraphId) => {
         this.intersectionObserver?.observe(element)
       })
     }
