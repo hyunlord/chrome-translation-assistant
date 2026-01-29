@@ -39,3 +39,25 @@
   --foreground: 210 40% 98%;
   --border: 217.2 32.6% 17.5%;
 }
+
+/* Animation utilities */
+@keyframes bounce {
+  0%, 100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-25%);
+  }
+}
+
+.animate-bounce {
+  animation: bounce 1s infinite;
+}
+
+.delay-100 {
+  animation-delay: 0.1s;
+}
+
+.delay-200 {
+  animation-delay: 0.2s;
+}

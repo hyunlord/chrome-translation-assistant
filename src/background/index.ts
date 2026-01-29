@@ -88,6 +88,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       handleGetHistory(sendResponse)
       return true
 
+    case 'SEND_CHAT_MESSAGE':
+      handleChatMessage(message.payload, sendResponse)
+      return true
+
     default:
       console.warn('Unknown message type:', message.type)
   }
@@ -232,6 +236,41 @@ async function handleUpdateApiKey(
   } catch (error) {
     console.error('Error updating API key:', error)
     sendResponse({ success: false, error: 'Failed to update API key' })
+  }
+}
+
+// Handle chat message
+async function handleChatMessage(
+  payload: { messages: any[]; stream?: boolean },
+  sendResponse: (response: any) => void
+) {
+  console.log('Chat message requested:', payload)
+
+  try {
+    // Get settings
+    const settings = await localStorage.get<any>('settings')
+    const providerType = settings?.defaultProvider || 'claude'
+
+    // Get provider
+    const provider = providerManager.getProvider(providerType as any)
+
+    // Send chat request
+    const response = await provider.chat({
+      messages: payload.messages,
+      stream: false,
+    })
+
+    sendResponse({
+      success: true,
+      message: response.message.content,
+      metadata: response.metadata,
+    })
+  } catch (error) {
+    console.error('Chat error:', error)
+    sendResponse({
+      success: false,
+      error: error instanceof Error ? error.message : 'Chat failed',
+    })
   }
 }
 

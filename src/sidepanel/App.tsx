@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { TranslationCard } from './components/TranslationView/TranslationCard'
+import { ChatWindow } from './components/ChatInterface/ChatWindow'
 
 interface Translation {
   id: string
@@ -185,18 +186,19 @@ function App() {
         )}
 
         {activeTab === 'chat' && (
-          <div className="space-y-4">
-            <div className="card">
-              <h2 className="text-lg font-semibold mb-2 text-gray-900 dark:text-white">
-                Chat
-              </h2>
-              <p className="text-gray-600 dark:text-gray-400">
-                Ask questions about your translations and get detailed explanations.
-              </p>
-              <p className="mt-2 text-sm text-gray-500 dark:text-gray-500">
-                Coming soon...
-              </p>
-            </div>
+          <div className="h-full flex flex-col">
+            <ChatWindow
+              translationContext={
+                currentTranslation
+                  ? {
+                      sourceText: currentTranslation.sourceText,
+                      translatedText: currentTranslation.translatedText,
+                      sourceLang: currentTranslation.sourceLang,
+                      targetLang: currentTranslation.targetLang,
+                    }
+                  : undefined
+              }
+            />
           </div>
         )}
 
