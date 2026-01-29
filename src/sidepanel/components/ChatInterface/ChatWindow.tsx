@@ -59,6 +59,16 @@ export function ChatWindow({ translationContext }: ChatWindowProps) {
     setMessages((prev) => [...prev, userMessage])
     setInput('')
     setSending(true)
+
+    // Create placeholder for streaming message
+    const streamingMessageId = crypto.randomUUID()
+    const streamingMessage: ChatMessage = {
+      id: streamingMessageId,
+      role: 'assistant',
+      content: '',
+      timestamp: Date.now(),
+    }
+    setMessages((prev) => [...prev, streamingMessage])
     setStreaming(true)
 
     try {
@@ -82,27 +92,39 @@ export function ChatWindow({ translationContext }: ChatWindowProps) {
         content: input.trim(),
       })
 
-      // Send to background script
-      const response = await chrome.runtime.sendMessage({
-        type: 'SEND_CHAT_MESSAGE',
+      // Send to background script with streaming
+      const port = chrome.runtime.connect({ name: 'chat-stream' })
+
+      port.postMessage({
+        type: 'SEND_CHAT_MESSAGE_STREAM',
         payload: {
           messages: apiMessages,
-          stream: true,
         },
       })
 
-      if (response.success) {
-        const assistantMessage: ChatMessage = {
-          id: crypto.randomUUID(),
-          role: 'assistant',
-          content: response.message,
-          timestamp: Date.now(),
-        }
+      let fullContent = ''
 
-        setMessages((prev) => [...prev, assistantMessage])
-      } else {
-        throw new Error(response.error || 'Failed to send message')
-      }
+      port.onMessage.addListener((message) => {
+        if (message.type === 'CHAT_STREAM_CHUNK') {
+          fullContent += message.chunk
+          // Update the streaming message
+          setMessages((prev) =>
+            prev.map((msg) =>
+              msg.id === streamingMessageId ? { ...msg, content: fullContent } : msg
+            )
+          )
+        } else if (message.type === 'CHAT_STREAM_DONE') {
+          setStreaming(false)
+          port.disconnect()
+        } else if (message.type === 'CHAT_STREAM_ERROR') {
+          throw new Error(message.error)
+        }
+      })
+
+      port.onDisconnect.addListener(() => {
+        setStreaming(false)
+        setSending(false)
+      })
     } catch (error) {
       console.error('Chat error:', error)
 
@@ -113,10 +135,13 @@ export function ChatWindow({ translationContext }: ChatWindowProps) {
         timestamp: Date.now(),
       }
 
-      setMessages((prev) => [...prev, errorMessage])
+      // Remove the streaming placeholder and add error message
+      setMessages((prev) =>
+        prev.filter((msg) => msg.id !== streamingMessageId).concat(errorMessage)
+      )
+      setStreaming(false)
     } finally {
       setSending(false)
-      setStreaming(false)
     }
   }
 

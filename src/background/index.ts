@@ -66,6 +66,25 @@ async function initializeProviders() {
 // Initialize on startup
 initializeProviders()
 
+// Handle streaming chat connections
+chrome.runtime.onConnect.addListener((port) => {
+  if (port.name === 'chat-stream') {
+    port.onMessage.addListener(async (message) => {
+      if (message.type === 'SEND_CHAT_MESSAGE_STREAM') {
+        try {
+          await handleChatMessageStream(message.payload, port)
+        } catch (error) {
+          port.postMessage({
+            type: 'CHAT_STREAM_ERROR',
+            error: error instanceof Error ? error.message : 'Chat failed',
+          })
+          port.disconnect()
+        }
+      }
+    })
+  }
+})
+
 // Listen for messages from content scripts and UI
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   console.log('Message received:', message, 'from:', sender)
@@ -270,6 +289,46 @@ async function handleChatMessage(
     sendResponse({
       success: false,
       error: error instanceof Error ? error.message : 'Chat failed',
+    })
+  }
+}
+
+// Handle streaming chat message
+async function handleChatMessageStream(
+  payload: { messages: any[] },
+  port: chrome.runtime.Port
+) {
+  console.log('Streaming chat message requested:', payload)
+
+  try {
+    // Get settings
+    const settings = await localStorage.get<any>('settings')
+    const providerType = settings?.defaultProvider || 'claude'
+
+    // Get provider
+    const provider = providerManager.getProvider(providerType as any)
+
+    // Stream chat response
+    const stream = provider.chatStream({
+      messages: payload.messages,
+      stream: true,
+    })
+
+    for await (const chunk of stream) {
+      port.postMessage({
+        type: 'CHAT_STREAM_CHUNK',
+        chunk,
+      })
+    }
+
+    port.postMessage({
+      type: 'CHAT_STREAM_DONE',
+    })
+  } catch (error) {
+    console.error('Streaming chat error:', error)
+    port.postMessage({
+      type: 'CHAT_STREAM_ERROR',
+      error: error instanceof Error ? error.message : 'Chat streaming failed',
     })
   }
 }
