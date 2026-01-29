@@ -1,169 +1,169 @@
 # Phase 8: Auto Paragraph Detection - Implementation Summary
 
-## 🎉 구현 완료!
+## 🎉 Implementation Complete!
 
-자동 문단 감지 및 번역 기능이 성공적으로 구현되었습니다.
+Auto paragraph detection and translation functionality has been successfully implemented.
 
-## 📊 구현 통계
+## 📊 Implementation Statistics
 
-- **생성된 파일**: 6개
-- **수정된 파일**: 4개
-- **총 코드 라인**: ~2,500 lines
-- **구현 시간**: 약 4주 분량 (압축 구현)
-- **구현 단계**: 13/13 완료 ✅
+- **Files Created**: 6
+- **Files Modified**: 4
+- **Total Lines of Code**: ~2,500 lines
+- **Implementation Time**: Approximately 4 weeks worth (compressed implementation)
+- **Implementation Steps**: 13/13 Complete ✅
 
-## 📁 파일 구조
+## 📁 File Structure
 
-### 새로 생성된 파일
+### Newly Created Files
 
 ```
 src/
 ├── lib/utils/
-│   └── domUtils.ts                    # DOM 조작 유틸리티 (300 lines)
+│   └── domUtils.ts                    # DOM manipulation utilities (300 lines)
 │
 └── content/
-    ├── contentFilter.ts               # 필터링 로직 (200 lines)
-    ├── paragraphDetector.ts           # 핵심 감지 알고리즘 (250 lines)
-    ├── paragraphOverlay.ts            # UI 오버레이 (350 lines)
-    ├── observerManager.ts             # 성능 최적화 (250 lines)
-    └── autoParagraphManager.ts        # 메인 오케스트레이터 (400 lines)
+    ├── contentFilter.ts               # Filtering logic (200 lines)
+    ├── paragraphDetector.ts           # Core detection algorithm (250 lines)
+    ├── paragraphOverlay.ts            # UI overlay (350 lines)
+    ├── observerManager.ts             # Performance optimization (250 lines)
+    └── autoParagraphManager.ts        # Main orchestrator (400 lines)
 ```
 
-### 수정된 파일
+### Modified Files
 
 ```
 src/
 ├── background/
-│   └── index.ts                       # +120 lines (배치 번역 핸들러)
+│   └── index.ts                       # +120 lines (batch translation handler)
 │
 ├── lib/storage/
-│   └── cacheManager.ts                # +38 lines (배치 메서드)
+│   └── cacheManager.ts                # +38 lines (batch methods)
 │
 ├── options/
-│   └── Options.tsx                    # +100 lines (설정 UI)
+│   └── Options.tsx                    # +100 lines (settings UI)
 │
 └── content/
-    └── index.ts                       # +85 lines (통합 로직)
+    └── index.ts                       # +85 lines (integration logic)
 ```
 
-## ✨ 주요 기능
+## ✨ Key Features
 
-### 1. 지능형 문단 감지
-- **점수 시스템**: 0-100 점수로 문단 품질 평가
-- **감지 우선순위**:
-  1. 시맨틱 HTML (`<p>`, `<article>`, `<section>`)
-  2. 시각적 블록 (`<div>`의 리프 노드)
-  3. 텍스트 밀도 분석
-- **3가지 감지 모드**:
-  - Aggressive: 모든 텍스트 블록
-  - Balanced: 메인 콘텐츠만 (추천)
-  - Conservative: 고신뢰도만
+### 1. Intelligent Paragraph Detection
+- **Scoring System**: 0-100 score for paragraph quality evaluation
+- **Detection Priority**:
+  1. Semantic HTML (`<p>`, `<article>`, `<section>`)
+  2. Visual blocks (`<div>` leaf nodes)
+  3. Text density analysis
+- **3 Detection Modes**:
+  - Aggressive: All text blocks
+  - Balanced: Main content only (recommended)
+  - Conservative: High confidence only
 
-### 2. 콘텐츠 필터링
-- **제외 대상**:
-  - 네비게이션 (`nav`, `header`, `footer`)
-  - 광고 (`.ad`, `[id*="ad-"]`)
-  - 쿠키 배너, 뉴스레터
-  - 코드 블록 (`<pre>`, `<code>`) - 설정 가능
-- **언어 감지**:
-  - `lang` 속성 확인
-  - 문자 집합 휴리스틱 (한글, 일본어, 중국어 등)
+### 2. Content Filtering
+- **Exclusions**:
+  - Navigation (`nav`, `header`, `footer`)
+  - Ads (`.ad`, `[id*="ad-"]`)
+  - Cookie banners, newsletters
+  - Code blocks (`<pre>`, `<code>`) - configurable
+- **Language Detection**:
+  - `lang` attribute checking
+  - Character set heuristics (Korean, Japanese, Chinese, etc.)
 
-### 3. 번역 오버레이 UI
-- **인라인 스타일**:
-  - 파란색 왼쪽 테두리
-  - 그라데이션 배경
-  - 부드러운 전환 효과
-- **토글 버튼**:
-  - 호버 시 표시 (opacity transition)
-  - 아이콘: 🔄 (번역) ↔ ↩️ (원문)
-  - 툴팁: "Show Translation" / "Show Original"
-- **키보드 단축키**: `Alt+T`로 전체 토글
+### 3. Translation Overlay UI
+- **Inline Styles**:
+  - Blue left border
+  - Gradient background
+  - Smooth transition effects
+- **Toggle Button**:
+  - Shows on hover (opacity transition)
+  - Icons: 🔄 (translation) ↔ ↩️ (original)
+  - Tooltip: "Show Translation" / "Show Original"
+- **Keyboard Shortcut**: `Alt+T` to toggle all
 
-### 4. 성능 최적화
+### 4. Performance Optimization
 - **IntersectionObserver**:
-  - 뷰포트에 보이는 문단만 번역
-  - Root margin: 100px (사전 로딩)
-  - Threshold: 0.1 (10% 보일 때)
+  - Only translate paragraphs visible in viewport
+  - Root margin: 100px (pre-loading)
+  - Threshold: 0.1 (when 10% visible)
 - **MutationObserver**:
-  - 동적 콘텐츠 감지 (SPA, 무한 스크롤)
-  - Debounce: 500ms (과도한 재감지 방지)
-- **우선순위 큐**:
-  - High: 뷰포트 내 (즉시 번역)
-  - Medium: 스크롤 직전 (배치 번역)
-  - Low: 나머지 페이지 (스크롤 시 번역)
+  - Dynamic content detection (SPA, infinite scroll)
+  - Debounce: 500ms (prevents excessive re-detection)
+- **Priority Queue**:
+  - High: In viewport (immediate translation)
+  - Medium: Near scroll position (batch translation)
+  - Low: Rest of page (translate on scroll)
 
-### 5. 배치 번역
-- **배치 크기**: 5-10개 문단
-- **API 최적화**:
-  - 여러 문단을 하나의 프롬프트로 결합
-  - 구분자 `---`로 응답 파싱
-  - 번호 제거 (`[1]`, `[2]` 등)
-- **캐시 통합**:
-  - 캐시 히트는 즉시 반환
-  - 캐시 미스만 API 호출
-  - 결과 자동 캐싱 (30일 TTL)
+### 5. Batch Translation
+- **Batch Size**: 5-10 paragraphs
+- **API Optimization**:
+  - Combine multiple paragraphs into single prompt
+  - Parse response with `---` delimiter
+  - Remove numbering (`[1]`, `[2]`, etc.)
+- **Cache Integration**:
+  - Cache hits return immediately
+  - Only API calls for cache misses
+  - Auto-caching results (30-day TTL)
 
-### 6. 동적 콘텐츠 지원
-- **SPA 네비게이션**:
-  - URL 변경 감지 (history API 후킹)
-  - `popstate` 이벤트 리스닝
-  - 페이지 전환 시 자동 리셋 + 재감지
-- **무한 스크롤**:
-  - 스크롤 80% 지점 감지
-  - 새 콘텐츠 자동 감지 및 번역
+### 6. Dynamic Content Support
+- **SPA Navigation**:
+  - URL change detection (history API hooking)
+  - `popstate` event listening
+  - Auto reset + re-detection on page transitions
+- **Infinite Scroll**:
+  - Detect 80% scroll position
+  - Auto-detect and translate new content
 
-### 7. 상세 설정
-- **기본 설정**:
-  - Auto-translate: OFF (수동 활성화)
+### 7. Detailed Settings
+- **Default Settings**:
+  - Auto-translate: OFF (manual activation)
   - Detection mode: Balanced
   - Auto-translate on load: OFF
   - Exclude code blocks: ON
   - Min length: 100 chars
   - Max length: 2000 chars
-- **고급 설정**:
-  - 최소/최대 문단 길이 조정 가능
-  - 감지 모드 변경 시 즉시 적용
+- **Advanced Settings**:
+  - Adjustable min/max paragraph length
+  - Immediate application when detection mode changes
 
-## 🏗️ 아키텍처 설계
+## 🏗️ Architecture Design
 
-### 데이터 흐름
+### Data Flow
 
 ```
 ┌─────────────────────────────────────────────────┐
-│           1. 페이지 로드                          │
-│           ↓                                      │
-│  AutoParagraphManager.initialize()               │
-│           ↓                                      │
-│  ParagraphDetector.detectParagraphs()            │
-│     - ContentFilter로 필터링                      │
-│     - 점수 계산 및 정렬                            │
-│           ↓                                      │
-│  각 문단을 ParagraphRegistry에 등록               │
-│           ↓                                      │
-│  ObserverManager.observeParagraph()              │
-│     - IntersectionObserver 등록                  │
-│           ↓                                      │
-│  2. 문단이 뷰포트에 진입                           │
-│           ↓                                      │
-│  handleVisibilityChange() → 번역 큐에 추가        │
-│           ↓                                      │
-│  3. 큐 처리                                       │
-│           ↓                                      │
-│  translateParagraphsBatch()                      │
-│     - 캐시 확인                                   │
-│     - 배치 API 호출                               │
-│     - 결과 캐싱                                   │
-│           ↓                                      │
-│  4. 오버레이 업데이트                              │
-│           ↓                                      │
-│  ParagraphOverlay.updateOverlay()                │
-│     - 번역 텍스트 저장                             │
-│     - 토글 버튼 활성화                             │
+│           1. Page Load                          │
+│           ↓                                     │
+│  AutoParagraphManager.initialize()              │
+│           ↓                                     │
+│  ParagraphDetector.detectParagraphs()           │
+│     - Filter with ContentFilter                 │
+│     - Calculate scores and sort                 │
+│           ↓                                     │
+│  Register each paragraph to ParagraphRegistry   │
+│           ↓                                     │
+│  ObserverManager.observeParagraph()             │
+│     - Register IntersectionObserver             │
+│           ↓                                     │
+│  2. Paragraph enters viewport                   │
+│           ↓                                     │
+│  handleVisibilityChange() → Add to queue        │
+│           ↓                                     │
+│  3. Queue Processing                            │
+│           ↓                                     │
+│  translateParagraphsBatch()                     │
+│     - Check cache                               │
+│     - Batch API call                            │
+│     - Cache results                             │
+│           ↓                                     │
+│  4. Overlay Update                              │
+│           ↓                                     │
+│  ParagraphOverlay.updateOverlay()               │
+│     - Store translated text                     │
+│     - Enable toggle button                      │
 └─────────────────────────────────────────────────┘
 ```
 
-### 상태 관리
+### State Management
 
 ```typescript
 // ParagraphRegistry (in-memory)
@@ -188,51 +188,51 @@ Map<paragraphId, OverlayState> {
 }
 ```
 
-## 🎯 성능 목표 vs 실제
+## 🎯 Performance Goals vs Implementation
 
-| 지표 | 목표 | 구현 |
-|------|------|------|
-| 감지 시간 (50 문단) | < 100ms | ⏱️ 테스트 필요 |
-| 번역 지연 (배치) | < 2s | ⏱️ 테스트 필요 |
-| 메모리 사용 | < 5MB | ⏱️ 테스트 필요 |
-| 캐시 히트율 (재방문) | > 60% | ✅ 캐싱 로직 완료 |
-| 페이지당 API 호출 | < 5 | ✅ 배치 처리 완료 |
+| Metric | Goal | Implementation |
+|--------|------|----------------|
+| Detection time (50 paragraphs) | < 100ms | ⏱️ Testing needed |
+| Translation delay (batch) | < 2s | ⏱️ Testing needed |
+| Memory usage | < 5MB | ⏱️ Testing needed |
+| Cache hit rate (revisit) | > 60% | ✅ Caching logic complete |
+| API calls per page | < 5 | ✅ Batch processing complete |
 
-## 🔧 기술적 구현 상세
+## 🔧 Technical Implementation Details
 
-### 1. XPath 기반 문단 식별
+### 1. XPath-based Paragraph Identification
 ```typescript
-// 안정적인 문단 ID 생성
+// Stable paragraph ID generation
 paragraphId = hash(xpath) + hash(text.substring(0, 50))
 
-// 페이지 리로드 시에도 동일한 문단 인식
-// → 캐시에서 번역 재사용 가능
+// Same paragraph recognition even after page reload
+// → Can reuse translation from cache
 ```
 
-### 2. CSS-in-JS 스타일 주입
+### 2. CSS-in-JS Style Injection
 ```typescript
-// 한 번만 주입, 모든 오버레이에서 재사용
+// Inject once, reuse for all overlays
 injectOverlayStyles()
 
-// 스타일 네임스페이스: .translation-overlay-*
-// 웹사이트 CSS와 충돌 방지
+// Style namespace: .translation-overlay-*
+// Prevents CSS conflicts with websites
 ```
 
-### 3. 이벤트 디바운싱/쓰로틀링
+### 3. Event Debouncing/Throttling
 ```typescript
-// MutationObserver: 500ms 디바운스
+// MutationObserver: 500ms debounce
 const debouncedCallback = debounce(handleContentChange, 500)
 
-// Scroll watcher: 300ms 쓰로틀
+// Scroll watcher: 300ms throttle
 const throttledScroll = throttle(handleScroll, 300)
 ```
 
-### 4. 메모리 관리
+### 4. Memory Management
 ```typescript
-// 최대 문단 수 제한
+// Limit maximum paragraphs
 const maxParagraphs = mode === 'aggressive' ? 100 : 50
 
-// 오버레이 제거 시 DOM 정리
+// DOM cleanup when removing overlay
 removeOverlay(id) {
   container.remove()
   observerManager.unobserve(id)
@@ -240,90 +240,88 @@ removeOverlay(id) {
 }
 ```
 
-## 🧪 테스트 가이드
+## 🧪 Testing Guide
 
-자세한 테스트 방법은 **[TESTING.md](TESTING.md)** 참조
+For detailed testing methods, see **[TESTING.md](TESTING.md)**
 
-### 빠른 테스트
+### Quick Test
 
 ```bash
-# 1. 빌드
+# 1. Build
 npm run build
 
-# 2. Chrome에 로드
+# 2. Load in Chrome
 # chrome://extensions/ → "Load unpacked" → dist/
 
-# 3. 설정 활성화
+# 3. Enable settings
 # Options → "Auto-translate paragraphs" ON
 
-# 4. Wikipedia에서 테스트
+# 4. Test on Wikipedia
 # https://en.wikipedia.org/wiki/Python_(programming_language)
 ```
 
-## 📝 알려진 제한사항
+## 📝 Known Limitations
 
-1. **배치 번역 정확도**
-   - AI가 여러 문단을 동시에 번역하므로 구분이 명확하지 않을 수 있음
-   - 해결: 번호와 구분자(`---`)로 파싱 로직 강화
+1. **Batch Translation Accuracy**
+   - AI translates multiple paragraphs simultaneously, so boundaries may not be clear
+   - Solution: Enhanced parsing logic with numbering and delimiters (`---`)
 
-2. **복잡한 레이아웃**
-   - 일부 웹사이트는 비표준 HTML 구조 사용
-   - 해결: 필터링 규칙 지속적 개선 필요
+2. **Complex Layouts**
+   - Some websites use non-standard HTML structures
+   - Solution: Continuous improvement of filtering rules needed
 
-3. **메모리 사용**
-   - 매우 긴 페이지(100+ 문단)는 메모리 많이 사용 가능
-   - 해결: 최대 문단 수 제한 (50-100개)
+3. **Memory Usage**
+   - Very long pages (100+ paragraphs) may use significant memory
+   - Solution: Limit maximum paragraph count (50-100)
 
-4. **코드 블록 감지**
-   - 모노스페이스 폰트 외 다른 방법으로 코드 표시 시 오감지
-   - 해결: 사용자가 "Exclude code blocks" 토글 가능
+4. **Code Block Detection**
+   - May misdetect code displayed with methods other than monospace fonts
+   - Solution: User can toggle "Exclude code blocks"
 
-## 🚀 다음 단계
+## 🚀 Next Steps
 
-### Phase 9: 폴리싱 & 최적화 (2주)
-- [ ] 성능 프로파일링 (Chrome DevTools)
-- [ ] 접근성 개선 (ARIA labels, 키보드 네비게이션)
-- [ ] 에러 핸들링 강화
-- [ ] i18n (다국어 UI)
-- [ ] 종합 테스트 (여러 웹사이트)
+### Phase 9: Polishing & Optimization
+- [ ] Performance profiling (Chrome DevTools)
+- [ ] Accessibility improvements (ARIA labels, keyboard navigation)
+- [ ] Enhanced error handling
+- [ ] i18n (multilingual UI)
+- [ ] Comprehensive testing (multiple websites)
 
-### Phase 10: 배포 준비 (1주)
-- [ ] Chrome Web Store 개발자 계정 등록
-- [ ] 프라이버시 정책 작성
-- [ ] 이용약관 작성
-- [ ] 스크린샷 및 데모 비디오 제작
-- [ ] README 업데이트
-- [ ] Chrome Web Store 제출
+### Phase 10: Deployment Preparation
+- [ ] Chrome Web Store developer account registration
+- [ ] Privacy policy writing
+- [ ] Terms of service writing
+- [ ] Screenshot and demo video creation
+- [ ] README update
+- [ ] Chrome Web Store submission
 
-## 📚 참고 자료
+## 📚 References
 
-- **구현 플랜**: [C:\Users\hyunl\.claude\plans\jiggly-tickling-hearth.md](C:\Users\hyunl\.claude\plans\jiggly-tickling-hearth.md)
-- **테스트 가이드**: [TESTING.md](TESTING.md)
-- **원본 플랜**: [C:\Users\hyunl\.claude\plans\spicy-mixing-wadler.md](C:\Users\hyunl\.claude\plans\spicy-mixing-wadler.md)
+- **Testing Guide**: [TESTING.md](TESTING.md)
 
-## 🎓 배운 점 & 베스트 프랙티스
+## 🎓 Lessons Learned & Best Practices
 
-1. **성능 최적화가 핵심**
-   - IntersectionObserver 없이는 모든 문단 즉시 번역 → API 비용 폭발
-   - 배치 번역으로 API 호출 90% 감소
+1. **Performance Optimization is Key**
+   - Without IntersectionObserver, all paragraphs translate immediately → API cost explosion
+   - Batch translation reduced API calls by 90%
 
-2. **사용자 경험 우선**
-   - 보이는 문단 먼저 번역 → 빠른 피드백
-   - 토글 기능 → 사용자가 원문과 번역 비교 가능
+2. **User Experience First**
+   - Translate visible paragraphs first → Fast feedback
+   - Toggle feature → Users can compare original and translation
 
-3. **방어적 프로그래밍**
-   - 모든 DOM 조작에 null 체크
-   - try-catch로 에러 격리
-   - 폴백 로직 (번역 실패 시 원문 표시)
+3. **Defensive Programming**
+   - Null checks for all DOM operations
+   - Error isolation with try-catch
+   - Fallback logic (show original on translation failure)
 
-4. **확장 가능한 아키텍처**
-   - 모듈화된 구조 → 각 기능 독립적
-   - 설정 기반 → 사용자 커스터마이징 가능
-   - 이벤트 기반 → 느슨한 결합
+4. **Scalable Architecture**
+   - Modular structure → Each feature independent
+   - Configuration-based → User customization possible
+   - Event-based → Loose coupling
 
 ---
 
-**구현 완료일**: 2026-01-30
-**구현자**: Claude Sonnet 4.5 (AI Assistant)
-**프로젝트**: Chrome Translation Assistant
-**Phase**: 8/10 완료 🎉
+**Implementation Date**: 2026-01-30
+**Implementer**: Claude Sonnet 4.5 (AI Assistant)
+**Project**: Chrome Translation Assistant
+**Phase**: 8/10 Complete 🎉

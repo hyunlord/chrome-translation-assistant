@@ -4,7 +4,7 @@
 
 ![License](https://img.shields.io/badge/license-MIT-blue.svg)
 ![Chrome](https://img.shields.io/badge/chrome-extension-brightgreen.svg)
-![Status](https://img.shields.io/badge/status-ready--for--testing-green.svg)
+![CI](https://github.com/hyunlord/chrome-translation-assistant/actions/workflows/ci.yml/badge.svg)
 ![Version](https://img.shields.io/badge/version-1.0.0-blue.svg)
 
 ---
@@ -71,10 +71,10 @@
 
 ## 💻 Installation & Usage
 
-### For Users (빌드 불필요)
+### For Users (No Build Required)
 
 1. **Download Extension**
-   - Go to [Releases](https://github.com/[YOUR-USERNAME]/chrome-translation-assistant/releases)
+   - Go to [Releases](https://github.com/hyunlord/chrome-translation-assistant/releases)
    - Download `chrome-translation-assistant.zip`
    - Extract the ZIP file
 
@@ -93,7 +93,7 @@
 
 ---
 
-### For Developers (소스 코드에서 빌드)
+### For Developers (Build from Source)
 
 #### Windows
 
@@ -290,6 +290,10 @@ npm run dev
 
 ```
 chrome-translation-assistant/
+├── .github/
+│   └── workflows/
+│       ├── ci.yml           # PR validation (lint + build)
+│       └── release.yml      # Automated releases & Chrome Web Store upload
 ├── dist/                    # Built extension (load in Chrome)
 ├── docs/                    # Documentation
 │   ├── TESTING.md
@@ -300,11 +304,16 @@ chrome-translation-assistant/
 │   ├── CHROME_WEB_STORE_CHECKLIST.md
 │   └── WINDOWS_GUIDE.md
 ├── public/
-│   ├── icons/               # Extension icons
+│   ├── icons/               # Extension icons (16, 32, 48, 128 px)
 │   └── manifest.json
 ├── scripts/
 │   ├── build.bat            # Windows build script
-│   └── dev.bat              # Windows dev server script
+│   ├── dev.bat              # Windows dev server script
+│   ├── release.bat          # Windows release script
+│   ├── release.sh           # macOS/Linux release script
+│   ├── create-icons.js      # Generate placeholder icons
+│   ├── sync-version.js      # Sync version to manifest.json
+│   └── zip-extension.js     # Create distribution ZIP
 ├── src/
 │   ├── background/          # Service worker
 │   ├── content/             # Content scripts (text selection, paragraph detection)
@@ -317,7 +326,9 @@ chrome-translation-assistant/
 │       ├── firebase/        # Optional Firebase sync
 │       ├── i18n/            # Internationalization
 │       └── utils/           # Utilities
+├── .eslintrc.cjs            # ESLint configuration
 ├── package.json
+├── tailwind.config.js
 ├── vite.config.ts
 └── tsconfig.json
 ```
@@ -329,20 +340,20 @@ chrome-translation-assistant/
 ### Available Scripts
 
 ```bash
-# Development mode with HMR (Hot Module Reload)
-npm run dev
+# Development
+npm run dev              # Development mode with HMR (Hot Module Reload)
+npm run build            # Build for production
+npm run lint             # Run ESLint
+npm run format           # Format code with Prettier
 
-# Build for production
-npm run build
-
-# Create ZIP for Chrome Web Store
-npm run zip
-
-# Lint code
-npm run lint
-
-# Format code
-npm run format
+# Release & Distribution
+npm run build:release    # Build + create ZIP (all-in-one)
+npm run zip              # Create ZIP for Chrome Web Store
+npm run version:patch    # Bump patch version (1.0.0 → 1.0.1)
+npm run version:minor    # Bump minor version (1.0.0 → 1.1.0)
+npm run version:major    # Bump major version (1.0.0 → 2.0.0)
+npm run release:local    # Bump patch + build + ZIP
+npm run sync-version     # Sync package.json version to manifest.json
 ```
 
 ### Testing
@@ -451,13 +462,184 @@ git push origin v1.0.0
 
 ---
 
+## 🍴 Fork & Customize
+
+Want to use this project as a base for your own Chrome extension? Follow these steps:
+
+### 1. Fork the Repository
+
+```bash
+# Fork on GitHub, then clone your fork
+git clone https://github.com/YOUR-USERNAME/chrome-translation-assistant.git
+cd chrome-translation-assistant
+npm install
+```
+
+### 2. Customize the Extension
+
+**Update extension identity:**
+- Edit `public/manifest.json`:
+  - Change `name` and `description`
+  - Update `homepage_url` to your repository
+- Edit `package.json`:
+  - Update `name`, `description`, `author`, `repository`
+- Replace icons in `public/icons/` with your own (16, 32, 48, 128 px)
+
+**Customize functionality:**
+- AI providers: `src/lib/ai/` - Add new providers or modify existing ones
+- UI themes: `src/styles/globals.css` and `tailwind.config.js`
+- Translation behavior: `src/content/paragraphDetector.ts`
+- Side panel UI: `src/sidepanel/`
+
+### 3. Set Up CI/CD for Your Fork
+
+This project includes GitHub Actions for automated builds and releases.
+
+**For PR validation (automatic):**
+- Works out of the box - every PR will be validated with lint and build checks
+
+**For automated releases:**
+
+1. **Manual release** (recommended for getting started):
+   ```bash
+   # Bump version and create release
+   npm run version:patch   # or version:minor, version:major
+   npm run build:release
+   git add .
+   git commit -m "Release v1.0.1"
+   git tag v1.0.1
+   git push origin main --tags
+   ```
+
+2. **GitHub Actions release** (via workflow dispatch):
+   - Go to Actions → Release → Run workflow
+   - Select version bump type (patch/minor/major)
+   - Optionally enable Chrome Web Store upload
+
+**For Chrome Web Store auto-upload (optional):**
+
+Set up these GitHub Secrets in your repository settings:
+
+| Secret Name | Description | How to Get |
+|-------------|-------------|------------|
+| `CHROME_EXTENSION_ID` | Your extension ID | From Chrome Web Store Developer Dashboard |
+| `CHROME_CLIENT_ID` | Google API Client ID | [Google Cloud Console](https://console.cloud.google.com/) |
+| `CHROME_CLIENT_SECRET` | Google API Client Secret | Google Cloud Console |
+| `CHROME_REFRESH_TOKEN` | OAuth Refresh Token | Use `chrome-webstore-upload-cli` |
+
+<details>
+<summary>📋 Detailed Chrome Web Store API Setup</summary>
+
+1. **Create Google Cloud Project:**
+   - Go to [Google Cloud Console](https://console.cloud.google.com/)
+   - Create new project
+   - Enable "Chrome Web Store API"
+
+2. **Create OAuth Credentials:**
+   - APIs & Services → Credentials → Create Credentials → OAuth Client ID
+   - Application type: Desktop app
+   - Note the Client ID and Client Secret
+
+3. **Get Refresh Token:**
+   ```bash
+   npx chrome-webstore-upload-cli init
+   # Follow prompts with your Client ID and Secret
+   # Save the refresh token
+   ```
+
+4. **Add to GitHub Secrets:**
+   - Repository → Settings → Secrets and variables → Actions
+   - Add each secret
+
+</details>
+
+### 4. Available npm Scripts
+
+```bash
+# Development
+npm run dev              # Start dev server with HMR
+npm run build            # Build for production
+npm run lint             # Run ESLint
+
+# Release
+npm run build:release    # Build + create ZIP
+npm run version:patch    # Bump patch version (1.0.0 → 1.0.1)
+npm run version:minor    # Bump minor version (1.0.0 → 1.1.0)
+npm run version:major    # Bump major version (1.0.0 → 2.0.0)
+npm run release:local    # Bump patch + build + ZIP (all-in-one)
+npm run zip              # Create ZIP from dist/
+npm run sync-version     # Sync package.json version to manifest.json
+```
+
+---
+
 ## 🤝 Contributing
 
-Contributions are welcome! Please:
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Submit a pull request
+Contributions are welcome! Here's how to contribute:
+
+### Getting Started
+
+1. **Fork the repository** on GitHub
+2. **Clone your fork:**
+   ```bash
+   git clone https://github.com/YOUR-USERNAME/chrome-translation-assistant.git
+   cd chrome-translation-assistant
+   ```
+3. **Install dependencies:**
+   ```bash
+   npm install
+   ```
+4. **Create a feature branch:**
+   ```bash
+   git checkout -b feature/your-feature-name
+   ```
+
+### Development Workflow
+
+1. **Make your changes** following the code style
+2. **Test locally:**
+   ```bash
+   npm run lint          # Check for lint errors
+   npm run build         # Ensure build succeeds
+   ```
+3. **Load in Chrome** and test manually
+4. **Commit your changes:**
+   ```bash
+   git add .
+   git commit -m "feat: add your feature description"
+   ```
+5. **Push and create PR:**
+   ```bash
+   git push origin feature/your-feature-name
+   ```
+   Then create a Pull Request on GitHub
+
+### Commit Message Convention
+
+We follow [Conventional Commits](https://www.conventionalcommits.org/):
+
+- `feat:` New feature
+- `fix:` Bug fix
+- `docs:` Documentation only
+- `style:` Code style (formatting, semicolons, etc.)
+- `refactor:` Code refactoring
+- `perf:` Performance improvement
+- `test:` Adding tests
+- `chore:` Build process, dependencies, etc.
+
+### Code Style
+
+- TypeScript strict mode
+- ESLint configuration in `.eslintrc.cjs`
+- Tailwind CSS for styling
+- React functional components with hooks
+
+### Pull Request Guidelines
+
+- PRs are automatically validated by CI (lint + build)
+- Ensure all checks pass before requesting review
+- Provide clear description of changes
+- Link related issues if applicable
 
 ---
 
