@@ -71,12 +71,36 @@
 
 ## 💻 Installation & Usage
 
-### Windows
+### For Users (빌드 불필요)
+
+1. **Download Extension**
+   - Go to [Releases](https://github.com/[YOUR-USERNAME]/chrome-translation-assistant/releases)
+   - Download `chrome-translation-assistant.zip`
+   - Extract the ZIP file
+
+2. **Load in Chrome**
+   - Open Chrome and go to `chrome://extensions/`
+   - Enable "Developer mode" (toggle in top right)
+   - Click "Load unpacked"
+   - Select the extracted `dist` folder
+
+3. **Configure**
+   - Click extension icon → Options
+   - Enter your API key (Claude/OpenAI/Gemini)
+   - Save settings
+
+**That's it! No build required.**
+
+---
+
+### For Developers (소스 코드에서 빌드)
+
+#### Windows
 
 #### Method 1: Batch Files (Easiest)
 
 1. **Open Project Folder**
-   - Navigate to `c:\Users\hyunl\chrome-translation-assistant` in File Explorer
+   - Navigate to `chrome-translation-assistant` folder in File Explorer
 
 2. **Build Extension**
    - Double-click `scripts\build.bat`
@@ -92,7 +116,8 @@
 
 ```cmd
 # Open Command Prompt (Win + R, type 'cmd', press Enter)
-cd c:\Users\hyunl\chrome-translation-assistant
+# Navigate to your project folder
+cd chrome-translation-assistant
 
 # Install dependencies
 npm install
@@ -107,7 +132,8 @@ npm run build
 
 ```powershell
 # Open PowerShell (Win + X, select "Windows PowerShell")
-cd c:\Users\hyunl\chrome-translation-assistant
+# Navigate to your project folder
+cd chrome-translation-assistant
 
 npm install
 npm run build
@@ -128,9 +154,7 @@ npm run dev
 
 ---
 
-### macOS
-
-#### Using Terminal
+#### macOS
 
 ```bash
 # Open Terminal (Cmd + Space, type 'Terminal')
@@ -163,9 +187,7 @@ npm run dev
 
 ---
 
-### Linux
-
-#### Using Terminal
+#### Linux
 
 ```bash
 # Open Terminal (Ctrl + Alt + T)
@@ -365,7 +387,53 @@ See comprehensive testing guide: [docs/TESTING.md](docs/TESTING.md)
 
 ## 🚢 Deployment
 
-Ready to publish to Chrome Web Store:
+### Option 1: GitHub Releases (Automated ✨)
+
+**One-click automated deployment:**
+
+#### Windows
+```cmd
+# Run the release script
+scripts\release.bat
+```
+
+#### macOS / Linux
+```bash
+# Run the release script
+./scripts/release.sh
+```
+
+**What happens automatically:**
+1. ✅ Builds extension
+2. ✅ Creates ZIP file
+3. ✅ Creates git tag (reads version from package.json)
+4. ✅ Pushes tag to GitHub
+5. ✅ GitHub Actions triggers and:
+   - Builds extension in clean environment
+   - Creates ZIP
+   - Creates GitHub Release with download link
+   - Uploads ZIP file to release
+
+**Manual method (alternative):**
+```bash
+# 1. Update version in package.json
+# 2. Build and tag
+npm run build
+npm run zip
+git tag -a v1.0.0 -m "Release v1.0.0"
+git push origin v1.0.0
+# GitHub Actions handles the rest automatically
+```
+
+**Advantages:**
+- ✅ Fully automated - one command
+- ✅ Free and instant
+- ✅ No review process
+- ✅ Users download pre-built ZIP
+
+### Option 2: Chrome Web Store (Official Distribution)
+
+**For wider distribution:**
 
 1. Review checklist: [docs/CHROME_WEB_STORE_CHECKLIST.md](docs/CHROME_WEB_STORE_CHECKLIST.md)
 2. Build production version: `npm run build`
@@ -373,6 +441,13 @@ Ready to publish to Chrome Web Store:
 4. Go to [Chrome Web Store Developer Dashboard](https://chrome.google.com/webstore/devconsole)
 5. Upload ZIP and fill in store listing (see [docs/STORE_LISTING.md](docs/STORE_LISTING.md))
 6. Submit for review (1-3 business days)
+7. $5 one-time developer fee
+
+**Advantages:**
+- Official Chrome Web Store listing
+- Automatic updates
+- Wider reach
+- Users install with one click
 
 ---
 
@@ -431,9 +506,8 @@ MIT License - see [LICENSE](LICENSE) file for details.
 
 ## 📞 Support
 
-- **Issues**: [GitHub Issues](https://github.com/your-username/chrome-translation-assistant/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/your-username/chrome-translation-assistant/discussions)
-- **Email**: your-email@example.com
+- **GitHub Issues**: Report bugs and request features
+- **GitHub Discussions**: Ask questions and share ideas
 
 ---
 
@@ -450,4 +524,4 @@ MIT License - see [LICENSE](LICENSE) file for details.
 
 **Made with ❤️ for language learners worldwide**
 
-Status: Ready for Testing | [Report Issues](https://github.com/your-username/chrome-translation-assistant/issues)
+Status: Ready for Testing

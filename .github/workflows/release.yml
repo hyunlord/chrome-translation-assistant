@@ -1,0 +1,77 @@
+name: Build and Release
+
+on:
+  push:
+    tags:
+      - 'v*' # Trigger on version tags like v1.0.0, v1.0.1, etc.
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: write # Required for creating releases
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build extension
+        run: npm run build
+
+      - name: Create ZIP
+        run: npm run zip
+
+      - name: Get version from tag
+        id: get_version
+        run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: chrome-translation-assistant.zip
+          name: Release ${{ steps.get_version.outputs.VERSION }}
+          body: |
+            ## 🎉 Chrome Extension Release ${{ steps.get_version.outputs.VERSION }}
+
+            ### 📦 Installation
+
+            1. Download `chrome-translation-assistant.zip`
+            2. Extract the ZIP file
+            3. Open Chrome → `chrome://extensions/`
+            4. Enable "Developer mode"
+            5. Click "Load unpacked"
+            6. Select the extracted `dist` folder
+
+            ### ⚙️ Configuration
+
+            - Click extension icon → Options
+            - Enter your API key (Claude/OpenAI/Gemini)
+            - Save settings
+
+            ### 📝 What's Changed
+
+            See commit history for details.
+
+            ---
+
+            **Note**: You need your own API key from Claude, OpenAI, or Gemini to use this extension.
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Release complete
+        run: |
+          echo "✅ Release created successfully!"
+          echo "📦 ZIP file uploaded to GitHub Releases"
+          echo "🎉 Users can now download and install the extension"

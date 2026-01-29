@@ -3,7 +3,8 @@
     "allow": [
       "Bash(npm run build:*)",
       "Bash(dir:*)",
-      "Bash(cmd.exe /c \"npm run build\")"
+      "Bash(cmd.exe /c \"npm run build\")",
+      "Bash(chmod:*)"
     ]
   }
 }
