@@ -242,10 +242,11 @@ export function isLikelyInLanguage(text: string, targetLang: string): boolean {
       // Check for Thai characters
       return /[\u0E00-\u0E7F]/.test(sampleText)
 
-    case 'en': // English
+    case 'en': {
       // Check if mostly ASCII and common English words
       const commonWords = ['the', 'a', 'is', 'in', 'to', 'and', 'of', 'for', 'on', 'with']
       return commonWords.some((word) => sampleText.includes(word))
+    }
 
     default:
       // For other languages, assume need translation

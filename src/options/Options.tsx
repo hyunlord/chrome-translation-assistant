@@ -56,6 +56,7 @@ function Options() {
   // Load settings on mount
   useEffect(() => {
     loadSettings()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   // Update current API key when provider changes

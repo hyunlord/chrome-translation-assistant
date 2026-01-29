@@ -44,6 +44,7 @@ export function ChatWindow({ translationContext }: ChatWindowProps) {
       }
       setMessages([contextMessage])
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [translationContext])
 
   const handleSendMessage = async () => {
