@@ -2,6 +2,7 @@ name: Release
 
 on:
   push:
+    branches: [main]
     tags:
       - 'v*'
   workflow_dispatch:
@@ -20,15 +21,14 @@ on:
         required: false
         default: false
         type: boolean
-      create_release:
-        description: 'Create GitHub Release'
-        required: false
-        default: true
-        type: boolean
 
 jobs:
   release:
     runs-on: ubuntu-latest
+    # Skip if commit message contains [skip release] or [no release]
+    if: |
+      !contains(github.event.head_commit.message, '[skip release]') &&
+      !contains(github.event.head_commit.message, '[no release]')
 
     permissions:
       contents: write
@@ -47,13 +47,33 @@ jobs:
           cache: 'npm'
 
       - name: Configure Git
-        if: github.event_name == 'workflow_dispatch'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
-      - name: Bump version (workflow_dispatch only)
-        if: github.event_name == 'workflow_dispatch'
+      - name: Determine version bump type
+        id: bump_type
+        run: |
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            echo "type=${{ inputs.version_type }}" >> $GITHUB_OUTPUT
+          elif [[ "${{ github.ref }}" == refs/tags/v* ]]; then
+            echo "type=none" >> $GITHUB_OUTPUT
+          else
+            # Auto patch bump for main branch push
+            echo "type=patch" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Get version from tag (tag push)
+        if: startsWith(github.ref, 'refs/tags/v')
+        id: tag_version
+        run: |
+          VERSION=${GITHUB_REF#refs/tags/v}
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "tag=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+          echo "is_tag=true" >> $GITHUB_OUTPUT
+
+      - name: Bump version (branch push or workflow_dispatch)
+        if: "!startsWith(github.ref, 'refs/tags/v')"
         id: bump_version
         run: |
           # Get current version
@@ -61,7 +81,7 @@ jobs:
           echo "Current version: $CURRENT_VERSION"
 
           # Bump version in package.json
-          npm version ${{ inputs.version_type }} --no-git-tag-version
+          npm version ${{ steps.bump_type.outputs.type }} --no-git-tag-version
           NEW_VERSION=$(node -p "require('./package.json').version")
           echo "New version: $NEW_VERSION"
 
@@ -70,29 +90,21 @@ jobs:
 
           # Commit and tag
           git add package.json public/manifest.json
-          git commit -m "chore: bump version to $NEW_VERSION"
+          git commit -m "chore: release v$NEW_VERSION [skip ci] [skip release]"
           git tag -a "v$NEW_VERSION" -m "Release version $NEW_VERSION"
 
           echo "version=$NEW_VERSION" >> $GITHUB_OUTPUT
           echo "tag=v$NEW_VERSION" >> $GITHUB_OUTPUT
 
-      - name: Get version from tag (tag push)
-        if: github.event_name == 'push'
-        id: get_version
-        run: |
-          VERSION=${GITHUB_REF#refs/tags/v}
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
-          echo "tag=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
-
       - name: Set version output
         id: version
         run: |
-          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+          if [ "${{ steps.tag_version.outputs.is_tag }}" == "true" ]; then
+            echo "version=${{ steps.tag_version.outputs.version }}" >> $GITHUB_OUTPUT
+            echo "tag=${{ steps.tag_version.outputs.tag }}" >> $GITHUB_OUTPUT
+          else
             echo "version=${{ steps.bump_version.outputs.version }}" >> $GITHUB_OUTPUT
             echo "tag=${{ steps.bump_version.outputs.tag }}" >> $GITHUB_OUTPUT
-          else
-            echo "version=${{ steps.get_version.outputs.version }}" >> $GITHUB_OUTPUT
-            echo "tag=${{ steps.get_version.outputs.tag }}" >> $GITHUB_OUTPUT
           fi
 
       - name: Install dependencies
@@ -108,14 +120,13 @@ jobs:
         run: |
           mv chrome-translation-assistant.zip chrome-translation-assistant-${{ steps.version.outputs.tag }}.zip
 
-      - name: Push version bump (workflow_dispatch only)
-        if: github.event_name == 'workflow_dispatch'
+      - name: Push version bump
+        if: "!startsWith(github.ref, 'refs/tags/v')"
         run: |
           git push origin main
           git push origin ${{ steps.version.outputs.tag }}
 
       - name: Create GitHub Release
-        if: inputs.create_release != false
         uses: softprops/action-gh-release@v1
         with:
           tag_name: ${{ steps.version.outputs.tag }}
@@ -182,8 +193,4 @@ jobs:
           echo "📦 Version: ${{ steps.version.outputs.tag }}"
           echo "📁 ZIP: chrome-translation-assistant-${{ steps.version.outputs.tag }}.zip"
           echo ""
-          if [ "${{ inputs.upload_to_store }}" == "true" ]; then
-            echo "🏪 Chrome Web Store: Upload attempted"
-          else
-            echo "🏪 Chrome Web Store: Skipped (not requested)"
-          fi
+          echo "🔗 Release: https://github.com/${{ github.repository }}/releases/tag/${{ steps.version.outputs.tag }}"
