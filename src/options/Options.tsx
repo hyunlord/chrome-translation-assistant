@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { OPENROUTER_MODELS } from '../lib/ai'
+import { usageTracker, type UsageStats } from '../lib/storage/usageTracker'
 
 interface Settings {
   defaultProvider: 'claude' | 'openai' | 'gemini' | 'openrouter'
@@ -33,7 +34,7 @@ interface SyncStatus {
 function Options() {
   const [settings, setSettings] = useState<Settings>({
     defaultProvider: 'claude',
-    openrouterModel: 'meta-llama/llama-3.1-8b-instruct:free',
+    openrouterModel: 'google/gemini-2.5-flash',
     defaultTargetLang: 'ko',
     autoTranslate: false,
     showTooltip: true,
@@ -56,6 +57,7 @@ function Options() {
     cloudCount: 0,
   })
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
+  const [usageStats, setUsageStats] = useState<UsageStats | null>(null)
 
   // Load settings on mount
   useEffect(() => {
@@ -71,9 +73,10 @@ function Options() {
 
   const loadSettings = async () => {
     try {
-      const [storedSettings, storedApiKeys] = await Promise.all([
+      const [storedSettings, storedApiKeys, stats] = await Promise.all([
         chrome.storage.local.get('settings'),
         chrome.storage.local.get('apiKeys'),
+        usageTracker.getStats(),
       ])
 
       if (storedSettings.settings) {
@@ -83,6 +86,8 @@ function Options() {
       if (storedApiKeys.apiKeys) {
         setApiKeys(storedApiKeys.apiKeys)
       }
+
+      setUsageStats(stats)
     } catch (error) {
       console.error('Error loading settings:', error)
       showMessage('error', 'Failed to load settings')
@@ -586,6 +591,142 @@ function Options() {
                   className="w-5 h-5 text-primary-600 rounded"
                 />
               </label>
+            </div>
+          </div>
+
+          {/* Usage Statistics */}
+          <div className="card">
+            <h2 className="text-xl font-semibold mb-4 text-gray-900 dark:text-white">
+              Usage Statistics
+            </h2>
+            <div className="space-y-4">
+              {usageStats && (
+                <>
+                  {/* Today's Usage */}
+                  <div>
+                    <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                      Today
+                    </h3>
+                    <div className="grid grid-cols-2 gap-2 text-sm">
+                      {(['claude', 'openai', 'gemini', 'openrouter'] as const).map((provider) => {
+                        const usage = usageStats.today[provider]
+                        if (usage.requestCount === 0) return null
+                        return (
+                          <div
+                            key={provider}
+                            className="flex justify-between p-2 bg-gray-50 dark:bg-gray-700 rounded"
+                          >
+                            <span className="capitalize text-gray-700 dark:text-gray-300">
+                              {provider}
+                            </span>
+                            <span className="text-gray-900 dark:text-white">
+                              {usageTracker.formatTokenCount(usage.totalTokens)} tokens
+                            </span>
+                          </div>
+                        )
+                      })}
+                      {Object.values(usageStats.today).every((u) => u.requestCount === 0) && (
+                        <p className="col-span-2 text-gray-500 dark:text-gray-400 text-sm">
+                          No usage today
+                        </p>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* All-Time Usage */}
+                  <div>
+                    <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                      All Time
+                    </h3>
+                    <div className="grid grid-cols-2 gap-2 text-sm">
+                      {(['claude', 'openai', 'gemini', 'openrouter'] as const).map((provider) => {
+                        const usage = usageStats.allTime[provider]
+                        if (usage.requestCount === 0) return null
+                        return (
+                          <div
+                            key={provider}
+                            className="flex justify-between p-2 bg-gray-50 dark:bg-gray-700 rounded"
+                          >
+                            <div>
+                              <span className="capitalize text-gray-700 dark:text-gray-300">
+                                {provider}
+                              </span>
+                              <span className="text-xs text-gray-500 ml-1">
+                                ({usage.requestCount} requests)
+                              </span>
+                            </div>
+                            <span className="text-gray-900 dark:text-white">
+                              {usageTracker.formatTokenCount(usage.totalTokens)}
+                            </span>
+                          </div>
+                        )
+                      })}
+                      {Object.values(usageStats.allTime).every((u) => u.requestCount === 0) && (
+                        <p className="col-span-2 text-gray-500 dark:text-gray-400 text-sm">
+                          No usage recorded yet
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                </>
+              )}
+
+              {/* Dashboard Links */}
+              <div className="pt-2 border-t border-gray-200 dark:border-gray-700">
+                <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">
+                  View detailed billing on provider dashboards:
+                </p>
+                <div className="flex flex-wrap gap-2 text-xs">
+                  <a
+                    href="https://console.anthropic.com/settings/billing"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-primary-600 hover:underline"
+                  >
+                    Claude
+                  </a>
+                  <span className="text-gray-400">|</span>
+                  <a
+                    href="https://platform.openai.com/usage"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-primary-600 hover:underline"
+                  >
+                    OpenAI
+                  </a>
+                  <span className="text-gray-400">|</span>
+                  <a
+                    href="https://aistudio.google.com/usage"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-primary-600 hover:underline"
+                  >
+                    Gemini
+                  </a>
+                  <span className="text-gray-400">|</span>
+                  <a
+                    href="https://openrouter.ai/activity"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-primary-600 hover:underline"
+                  >
+                    OpenRouter
+                  </a>
+                </div>
+              </div>
+
+              {/* Reset Button */}
+              <button
+                onClick={async () => {
+                  await usageTracker.resetStats('all')
+                  const stats = await usageTracker.getStats()
+                  setUsageStats(stats)
+                  showMessage('success', 'Usage statistics reset')
+                }}
+                className="text-sm text-red-600 hover:text-red-700 dark:text-red-400"
+              >
+                Reset all statistics
+              </button>
             </div>
           </div>
 

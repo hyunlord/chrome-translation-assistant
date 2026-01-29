@@ -8,27 +8,34 @@ import {
   ChatResponse,
 } from './baseProvider'
 
-// Popular OpenRouter models
+// Popular OpenRouter models (Updated Jan 2026)
 export const OPENROUTER_MODELS = [
-  { id: 'meta-llama/llama-3.1-8b-instruct:free', name: 'Llama 3.1 8B (Free)' },
-  { id: 'meta-llama/llama-3.1-70b-instruct', name: 'Llama 3.1 70B' },
-  { id: 'mistralai/mistral-7b-instruct:free', name: 'Mistral 7B (Free)' },
-  { id: 'google/gemma-2-9b-it:free', name: 'Gemma 2 9B (Free)' },
-  { id: 'qwen/qwen-2-7b-instruct:free', name: 'Qwen 2 7B (Free)' },
-  { id: 'anthropic/claude-3.5-sonnet', name: 'Claude 3.5 Sonnet' },
-  { id: 'anthropic/claude-3-haiku', name: 'Claude 3 Haiku' },
-  { id: 'openai/gpt-4o', name: 'GPT-4o' },
-  { id: 'openai/gpt-4o-mini', name: 'GPT-4o Mini' },
-  { id: 'google/gemini-pro-1.5', name: 'Gemini Pro 1.5' },
+  // Free models
+  { id: 'google/gemini-2.5-flash', name: 'Gemini 2.5 Flash (Free)' },
+  { id: 'google/gemini-2.5-flash-lite', name: 'Gemini 2.5 Flash Lite (Free)' },
+  { id: 'deepseek/deepseek-v3.2-20251201', name: 'DeepSeek V3.2 (Free)' },
+  { id: 'openai/gpt-oss-120b', name: 'GPT-OSS 120B (Free)' },
+  { id: 'x-ai/grok-code-fast-1', name: 'Grok Code Fast (Free)' },
+  { id: 'mistralai/devstral-2512:free', name: 'Devstral (Free)' },
+  // Premium models
+  { id: 'anthropic/claude-4.5-sonnet-20250929', name: 'Claude 4.5 Sonnet' },
+  { id: 'anthropic/claude-4.5-opus-20251124', name: 'Claude 4.5 Opus' },
+  { id: 'anthropic/claude-4-sonnet-20250522', name: 'Claude 4 Sonnet' },
+  { id: 'openai/gpt-5.2-20251211', name: 'GPT-5.2' },
+  { id: 'openai/gpt-4.1-mini-2025-04-14', name: 'GPT-4.1 Mini' },
+  { id: 'google/gemini-3-pro-preview-20251117', name: 'Gemini 3 Pro' },
+  { id: 'google/gemini-3-flash-preview-20251217', name: 'Gemini 3 Flash' },
+  { id: 'x-ai/grok-4.1-fast', name: 'Grok 4.1 Fast' },
+  { id: 'qwen/qwen3-coder-480b-a35b-07-25', name: 'Qwen 3 Coder 480B' },
 ]
 
 export class OpenRouterProvider extends BaseAIProvider {
   private readonly apiEndpoint = 'https://openrouter.ai/api/v1/chat/completions'
-  private readonly defaultModel = 'meta-llama/llama-3.1-8b-instruct:free'
+  private readonly defaultModel = 'google/gemini-2.5-flash'
 
   constructor(config: AIProviderConfig) {
     super('openrouter', {
-      model: config.model || 'meta-llama/llama-3.1-8b-instruct:free',
+      model: config.model || 'google/gemini-2.5-flash',
       temperature: config.temperature ?? 0.3,
       maxTokens: config.maxTokens ?? 4096,
       ...config,
@@ -188,7 +195,7 @@ export class OpenRouterProvider extends BaseAIProvider {
         method: 'POST',
         headers: this.getHeaders(),
         body: JSON.stringify({
-          model: 'meta-llama/llama-3.1-8b-instruct:free',
+          model: 'google/gemini-2.5-flash',
           messages: [{ role: 'user', content: 'Hi' }],
           max_tokens: 10,
         }),

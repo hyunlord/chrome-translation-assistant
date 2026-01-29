@@ -2,6 +2,7 @@
 import { AIProviderManager, type TranslationRequest } from '../lib/ai'
 import { getTranslationCache } from '../lib/storage'
 import { localStorage } from '../lib/storage/chromeStorage'
+import { usageTracker } from '../lib/storage/usageTracker'
 
 console.log('Translation Assistant: Background service worker loaded')
 
@@ -184,6 +185,14 @@ async function handleTranslation(payload: any, sendResponse: (response: any) => 
       timestamp: Date.now(),
     })
 
+    // Record usage statistics
+    const tokensUsed = result.metadata?.tokensUsed || 0
+    if (tokensUsed > 0) {
+      const promptTokens = Math.floor(tokensUsed * 0.4)
+      const completionTokens = tokensUsed - promptTokens
+      await usageTracker.recordUsage(providerType as any, promptTokens, completionTokens)
+    }
+
     // Send response
     sendResponse({
       success: true,
@@ -286,6 +295,14 @@ async function handleChatMessage(
       messages: payload.messages,
       stream: false,
     })
+
+    // Record usage statistics
+    const tokensUsed = response.metadata?.tokensUsed || 0
+    if (tokensUsed > 0) {
+      const promptTokens = Math.floor(tokensUsed * 0.6)
+      const completionTokens = tokensUsed - promptTokens
+      await usageTracker.recordUsage(providerType as any, promptTokens, completionTokens)
+    }
 
     sendResponse({
       success: true,

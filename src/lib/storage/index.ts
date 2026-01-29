@@ -14,3 +14,10 @@ export {
   removeStorageListener,
   type StorageChangeListener,
 } from './chromeStorage'
+
+export {
+  usageTracker,
+  type UsageStats,
+  type UsageRecord,
+  type ProviderUsage,
+} from './usageTracker'
