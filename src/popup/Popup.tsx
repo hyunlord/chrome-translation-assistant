@@ -1,6 +1,14 @@
 function Popup() {
-  const openSidePanel = () => {
-    chrome.sidePanel?.open({ windowId: chrome.windows.WINDOW_ID_CURRENT })
+  const openSidePanel = async () => {
+    try {
+      // Get current window and open side panel via background script
+      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true })
+      if (tab?.windowId) {
+        await chrome.sidePanel.open({ windowId: tab.windowId })
+      }
+    } catch (error) {
+      console.error('Failed to open side panel:', error)
+    }
   }
 
   const openOptions = () => {

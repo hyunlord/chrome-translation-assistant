@@ -5,6 +5,7 @@
   "description": "AI-powered translation with multi-provider support and cross-device sync",
   "permissions": [
     "activeTab",
+    "tabs",
     "storage",
     "sidePanel",
     "scripting",

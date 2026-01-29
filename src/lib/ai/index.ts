@@ -7,6 +7,7 @@ import {
 import { ClaudeProvider } from './claudeProvider'
 import { OpenAIProvider } from './openaiProvider'
 import { GeminiProvider } from './geminiProvider'
+import { OpenRouterProvider } from './openrouterProvider'
 
 /**
  * Factory function to create AI provider instances
@@ -24,6 +25,9 @@ export function createAIProvider(
 
     case 'gemini':
       return new GeminiProvider(config)
+
+    case 'openrouter':
+      return new OpenRouterProvider(config)
 
     default:
       throw new Error(`Unknown AI provider type: ${type}`)
@@ -113,3 +117,4 @@ export type {
 export { ClaudeProvider } from './claudeProvider'
 export { OpenAIProvider } from './openaiProvider'
 export { GeminiProvider } from './geminiProvider'
+export { OpenRouterProvider, OPENROUTER_MODELS } from './openrouterProvider'

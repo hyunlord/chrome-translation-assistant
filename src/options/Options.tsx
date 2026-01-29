@@ -1,7 +1,9 @@
 import { useState, useEffect } from 'react'
+import { OPENROUTER_MODELS } from '../lib/ai'
 
 interface Settings {
-  defaultProvider: 'claude' | 'openai' | 'gemini'
+  defaultProvider: 'claude' | 'openai' | 'gemini' | 'openrouter'
+  openrouterModel?: string
   defaultTargetLang: string
   autoTranslate: boolean
   showTooltip: boolean
@@ -17,6 +19,7 @@ interface ApiKeys {
   claude?: string
   openai?: string
   gemini?: string
+  openrouter?: string
 }
 
 interface SyncStatus {
@@ -30,6 +33,7 @@ interface SyncStatus {
 function Options() {
   const [settings, setSettings] = useState<Settings>({
     defaultProvider: 'claude',
+    openrouterModel: 'meta-llama/llama-3.1-8b-instruct:free',
     defaultTargetLang: 'ko',
     autoTranslate: false,
     showTooltip: true,
@@ -112,6 +116,7 @@ function Options() {
           payload: {
             provider: settings.defaultProvider,
             apiKey: currentApiKey,
+            model: settings.defaultProvider === 'openrouter' ? settings.openrouterModel : undefined,
           },
         })
       }
@@ -137,6 +142,7 @@ function Options() {
       const { createAIProvider } = await import('../lib/ai')
       const provider = createAIProvider(settings.defaultProvider, {
         apiKey: currentApiKey,
+        model: settings.defaultProvider === 'openrouter' ? settings.openrouterModel : undefined,
       })
 
       const isValid = await provider.validateApiKey()
@@ -306,6 +312,49 @@ function Options() {
                   </div>
                 </div>
               </label>
+
+              <label className="flex items-center space-x-3 cursor-pointer">
+                <input
+                  type="radio"
+                  name="provider"
+                  value="openrouter"
+                  checked={settings.defaultProvider === 'openrouter'}
+                  onChange={(e) =>
+                    setSettings({ ...settings, defaultProvider: e.target.value as any })
+                  }
+                  className="w-4 h-4 text-primary-600"
+                />
+                <div>
+                  <div className="font-medium text-gray-900 dark:text-white">OpenRouter</div>
+                  <div className="text-sm text-gray-600 dark:text-gray-400">
+                    Access 100+ AI models (Llama, Mistral, Claude, GPT, etc.)
+                  </div>
+                </div>
+              </label>
+
+              {settings.defaultProvider === 'openrouter' && (
+                <div className="ml-7 mt-2">
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                    Select Model
+                  </label>
+                  <select
+                    value={settings.openrouterModel}
+                    onChange={(e) =>
+                      setSettings({ ...settings, openrouterModel: e.target.value })
+                    }
+                    className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                  >
+                    {OPENROUTER_MODELS.map((model) => (
+                      <option key={model.id} value={model.id}>
+                        {model.name}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                    Models with (Free) tag are free to use
+                  </p>
+                </div>
+              )}
             </div>
           </div>
 
@@ -318,6 +367,7 @@ function Options() {
                   {settings.defaultProvider === 'claude' && 'Claude API Key'}
                   {settings.defaultProvider === 'openai' && 'OpenAI API Key'}
                   {settings.defaultProvider === 'gemini' && 'Gemini API Key'}
+                  {settings.defaultProvider === 'openrouter' && 'OpenRouter API Key'}
                 </label>
                 <div className="flex gap-2">
                   <input
@@ -345,7 +395,9 @@ function Options() {
                         ? 'https://console.anthropic.com/account/keys'
                         : settings.defaultProvider === 'openai'
                           ? 'https://platform.openai.com/api-keys'
-                          : 'https://makersuite.google.com/app/apikey'
+                          : settings.defaultProvider === 'gemini'
+                            ? 'https://makersuite.google.com/app/apikey'
+                            : 'https://openrouter.ai/keys'
                     }
                     target="_blank"
                     rel="noopener noreferrer"

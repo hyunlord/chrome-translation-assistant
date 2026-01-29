@@ -44,7 +44,7 @@ export interface ChatResponse {
   }
 }
 
-export type AIProviderType = 'claude' | 'openai' | 'gemini'
+export type AIProviderType = 'claude' | 'openai' | 'gemini' | 'openrouter'
 
 export interface AIProviderConfig {
   apiKey: string
