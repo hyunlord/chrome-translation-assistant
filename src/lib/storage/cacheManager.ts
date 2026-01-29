@@ -155,6 +155,48 @@ export class TranslationCache {
   }
 
   /**
+   * Batch get for multiple paragraphs
+   * Returns Map<text, translatedText | null>
+   */
+  getBatch(
+    paragraphs: Array<{ text: string }>,
+    targetLang: string,
+    provider: string
+  ): Map<string, string | null> {
+    const results = new Map<string, string | null>()
+
+    for (const paragraph of paragraphs) {
+      const translation = this.get(paragraph.text, targetLang, provider)
+      results.set(paragraph.text, translation)
+    }
+
+    return results
+  }
+
+  /**
+   * Batch set for multiple paragraphs
+   */
+  setBatch(
+    translations: Array<{
+      sourceText: string
+      translatedText: string
+      sourceLang: string
+    }>,
+    targetLang: string,
+    provider: string
+  ): void {
+    for (const item of translations) {
+      this.set(
+        item.sourceText,
+        item.translatedText,
+        item.sourceLang,
+        targetLang,
+        provider
+      )
+    }
+  }
+
+  /**
    * Remove expired entries
    */
   pruneExpired(): number {

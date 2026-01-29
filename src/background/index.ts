@@ -111,6 +111,14 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       handleChatMessage(message.payload, sendResponse)
       return true
 
+    case 'TRANSLATE_PARAGRAPHS_BATCH':
+      handleBatchTranslation(message.payload, sendResponse)
+      return true
+
+    case 'TOGGLE_AUTO_TRANSLATE':
+      handleToggleAutoTranslate(message.payload, sendResponse)
+      return true
+
     default:
       console.warn('Unknown message type:', message.type)
   }
@@ -337,6 +345,146 @@ async function handleChatMessageStream(
 async function handleOpenSidePanel(windowId?: number) {
   if (windowId) {
     await chrome.sidePanel.open({ windowId })
+  }
+}
+
+// Handle batch translation for multiple paragraphs
+async function handleBatchTranslation(payload: any, sendResponse: (response: any) => void) {
+  console.log('Batch translation requested:', payload.paragraphs.length, 'paragraphs')
+
+  try {
+    const { paragraphs, targetLang } = payload
+
+    // Get settings
+    const settings = await localStorage.get<any>('settings')
+    const providerType = settings?.defaultProvider || 'claude'
+
+    // Check cache for each paragraph
+    const cachedResults: any[] = []
+    const uncachedParagraphs: any[] = []
+
+    for (const paragraph of paragraphs) {
+      const cachedTranslation = translationCache.get(paragraph.text, targetLang, providerType)
+      if (cachedTranslation) {
+        cachedResults.push({
+          id: paragraph.id,
+          translatedText: cachedTranslation,
+          cached: true,
+        })
+      } else {
+        uncachedParagraphs.push(paragraph)
+      }
+    }
+
+    console.log(`Cache hits: ${cachedResults.length}, Cache misses: ${uncachedParagraphs.length}`)
+
+    // If all cached, return immediately
+    if (uncachedParagraphs.length === 0) {
+      sendResponse({
+        success: true,
+        translations: cachedResults,
+      })
+      return
+    }
+
+    // Get provider
+    const provider = providerManager.getProvider(providerType as any)
+
+    // Batch translate uncached paragraphs (5-10 at a time)
+    const batchSize = 10
+    const newTranslations: any[] = []
+
+    for (let i = 0; i < uncachedParagraphs.length; i += batchSize) {
+      const batch = uncachedParagraphs.slice(i, i + batchSize)
+
+      // Build batch prompt
+      const batchText = batch
+        .map((p, index) => `[${index + 1}] ${p.text}`)
+        .join('\n\n---\n\n')
+
+      const batchPrompt = `Translate the following ${batch.length} paragraphs from their source language to ${targetLang}.
+Maintain the original formatting and tone. Return only the translations, separated by "---", in the same order.
+
+${batchText}`
+
+      // Translate batch
+      const result = await provider.translate({
+        text: batchPrompt,
+        targetLang,
+        context: {
+          url: batch[0].context.url,
+          title: batch[0].context.title,
+        },
+      })
+
+      // Parse batch response
+      const translations = result.translatedText.split('---').map((t: string) => t.trim())
+
+      // Match translations to paragraphs
+      batch.forEach((paragraph, index) => {
+        const translatedText = translations[index] || batch[index].text // Fallback to original
+
+        // Remove numbering if present (like "[1]")
+        const cleanedTranslation = translatedText.replace(/^\[\d+\]\s*/, '')
+
+        newTranslations.push({
+          id: paragraph.id,
+          translatedText: cleanedTranslation,
+          cached: false,
+        })
+
+        // Cache result
+        translationCache.set(
+          paragraph.text,
+          cleanedTranslation,
+          result.sourceLang,
+          result.targetLang,
+          result.provider
+        )
+
+        // Save to history
+        saveTranslationToHistory({
+          sourceText: paragraph.text,
+          translatedText: cleanedTranslation,
+          sourceLang: result.sourceLang,
+          targetLang: result.targetLang,
+          provider: result.provider,
+          context: paragraph.context,
+          timestamp: Date.now(),
+        })
+      })
+    }
+
+    // Combine cached and new translations
+    const allTranslations = [...cachedResults, ...newTranslations]
+
+    sendResponse({
+      success: true,
+      translations: allTranslations,
+    })
+  } catch (error) {
+    console.error('Batch translation error:', error)
+    sendResponse({
+      success: false,
+      error: error instanceof Error ? error.message : 'Batch translation failed',
+    })
+  }
+}
+
+// Handle toggle auto-translate setting
+async function handleToggleAutoTranslate(
+  payload: { enabled: boolean },
+  sendResponse: (response: any) => void
+) {
+  try {
+    const settings = await localStorage.get<any>('settings')
+    settings.autoTranslate = payload.enabled
+    await localStorage.set('settings', settings)
+
+    sendResponse({ success: true })
+  } catch (error) {
+    console.error('Error toggling auto-translate:', error)
+    sendResponse({ success: false, error: 'Failed to toggle auto-translate' })
   }
 }
 

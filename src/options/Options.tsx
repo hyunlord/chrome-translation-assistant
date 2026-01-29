@@ -6,6 +6,11 @@ interface Settings {
   autoTranslate: boolean
   showTooltip: boolean
   enableSync: boolean
+  detectionMode: 'aggressive' | 'balanced' | 'conservative'
+  autoTranslateOnLoad: boolean
+  excludeCodeBlocks: boolean
+  minParagraphLength: number
+  maxParagraphLength: number
 }
 
 interface ApiKeys {
@@ -29,6 +34,11 @@ function Options() {
     autoTranslate: false,
     showTooltip: true,
     enableSync: false,
+    detectionMode: 'balanced',
+    autoTranslateOnLoad: false,
+    excludeCodeBlocks: true,
+    minParagraphLength: 100,
+    maxParagraphLength: 2000,
   })
 
   const [apiKeys, setApiKeys] = useState<ApiKeys>({})
@@ -380,7 +390,7 @@ function Options() {
                     Auto-translate paragraphs
                   </div>
                   <div className="text-sm text-gray-600 dark:text-gray-400">
-                    Automatically detect and suggest paragraph translations
+                    Automatically detect and translate paragraphs on web pages
                   </div>
                 </div>
                 <input
@@ -390,6 +400,122 @@ function Options() {
                   className="w-5 h-5 text-primary-600 rounded"
                 />
               </label>
+
+              {settings.autoTranslate && (
+                <div className="ml-6 space-y-4 border-l-2 border-primary-200 dark:border-primary-800 pl-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                      Detection Mode
+                    </label>
+                    <select
+                      value={settings.detectionMode}
+                      onChange={(e) =>
+                        setSettings({
+                          ...settings,
+                          detectionMode: e.target.value as 'aggressive' | 'balanced' | 'conservative',
+                        })
+                      }
+                      className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                    >
+                      <option value="balanced">Balanced - Main content only (Recommended)</option>
+                      <option value="aggressive">Aggressive - All text blocks</option>
+                      <option value="conservative">Conservative - High confidence only</option>
+                    </select>
+                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                      Controls how many paragraphs are detected and translated
+                    </p>
+                  </div>
+
+                  <label className="flex items-center justify-between">
+                    <div>
+                      <div className="text-sm font-medium text-gray-900 dark:text-white">
+                        Auto-translate on page load
+                      </div>
+                      <div className="text-xs text-gray-600 dark:text-gray-400">
+                        If unchecked, you'll need to manually trigger translation
+                      </div>
+                    </div>
+                    <input
+                      type="checkbox"
+                      checked={settings.autoTranslateOnLoad}
+                      onChange={(e) =>
+                        setSettings({ ...settings, autoTranslateOnLoad: e.target.checked })
+                      }
+                      className="w-4 h-4 text-primary-600 rounded"
+                    />
+                  </label>
+
+                  <label className="flex items-center justify-between">
+                    <div>
+                      <div className="text-sm font-medium text-gray-900 dark:text-white">
+                        Exclude code blocks
+                      </div>
+                      <div className="text-xs text-gray-600 dark:text-gray-400">
+                        Skip translating code snippets and technical content
+                      </div>
+                    </div>
+                    <input
+                      type="checkbox"
+                      checked={settings.excludeCodeBlocks}
+                      onChange={(e) =>
+                        setSettings({ ...settings, excludeCodeBlocks: e.target.checked })
+                      }
+                      className="w-4 h-4 text-primary-600 rounded"
+                    />
+                  </label>
+
+                  <details className="mt-2">
+                    <summary className="text-sm font-medium text-gray-700 dark:text-gray-300 cursor-pointer hover:text-primary-600">
+                      Advanced Settings
+                    </summary>
+                    <div className="mt-3 space-y-3 pl-4">
+                      <div>
+                        <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
+                          Min paragraph length
+                        </label>
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="number"
+                            min="50"
+                            max="500"
+                            value={settings.minParagraphLength}
+                            onChange={(e) =>
+                              setSettings({
+                                ...settings,
+                                minParagraphLength: parseInt(e.target.value) || 100,
+                              })
+                            }
+                            className="w-24 px-3 py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                          />
+                          <span className="text-xs text-gray-500">characters</span>
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
+                          Max paragraph length
+                        </label>
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="number"
+                            min="500"
+                            max="5000"
+                            value={settings.maxParagraphLength}
+                            onChange={(e) =>
+                              setSettings({
+                                ...settings,
+                                maxParagraphLength: parseInt(e.target.value) || 2000,
+                              })
+                            }
+                            className="w-24 px-3 py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                          />
+                          <span className="text-xs text-gray-500">characters</span>
+                        </div>
+                      </div>
+                    </div>
+                  </details>
+                </div>
+              )}
 
               <label className="flex items-center justify-between">
                 <div>
