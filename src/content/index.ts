@@ -1,27 +1,19 @@
 // Content Script - Main
+import { initializeTextSelection } from './textSelection'
+
 console.log('Translation Assistant: Content script loaded')
 
-// Listen for text selection
-document.addEventListener('mouseup', handleTextSelection)
-
-function handleTextSelection() {
-  const selectedText = window.getSelection()?.toString().trim()
-
-  if (selectedText && selectedText.length > 0) {
-    console.log('Text selected:', selectedText)
-
-    // TODO: Show tooltip or send to background
-    // For now, just log it
-  }
-}
+// Initialize text selection handler
+initializeTextSelection()
 
 // Listen for messages from background script
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   console.log('Content script received message:', message)
 
   switch (message.type) {
-    case 'TRANSLATE_SELECTION':
-      handleTranslationRequest(message.payload.text)
+    case 'TRANSLATION_COMPLETE':
+      // Translation completed, side panel will handle display
+      console.log('Translation complete:', message.payload)
       break
 
     default:
@@ -30,19 +22,5 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
   return false
 })
-
-function handleTranslationRequest(text: string) {
-  console.log('Translation requested for:', text)
-
-  // Send to background for processing
-  chrome.runtime.sendMessage({
-    type: 'TRANSLATE_TEXT',
-    payload: { text }
-  }, (response) => {
-    console.log('Translation response:', response)
-
-    // TODO: Display translation in UI
-  })
-}
 
 export {}
