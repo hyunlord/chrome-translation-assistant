@@ -71,6 +71,125 @@ function App() {
   // Translation stream port reference
   const translationPortRef = useRef<chrome.runtime.Port | null>(null)
 
+  // Internal streaming translation function (defined before handlePortMessage to avoid circular deps)
+  const startStreamingTranslationInternal = useCallback((text: string, windowId: number) => {
+    // Disconnect existing port if any
+    if (translationPortRef.current) {
+      translationPortRef.current.disconnect()
+    }
+
+    updateWindowData(windowId, {
+      isStreaming: true,
+      streamingText: '',
+      streamingSourceText: text,
+      error: null,
+      loading: false,
+    })
+    setActiveTab('translation')
+
+    const port = chrome.runtime.connect({ name: 'translation-stream' })
+    translationPortRef.current = port
+
+    port.postMessage({
+      type: 'TRANSLATE_TEXT_STREAM',
+      payload: { text, windowId },
+    })
+
+    port.onMessage.addListener((message) => {
+      if (message.type === 'TRANSLATION_STREAM_CHUNK') {
+        updateWindowData(windowId, {
+          streamingText: message.payload.text,
+          isStreaming: !message.payload.done,
+        })
+        if (message.payload.done) {
+          // Create final translation object
+          const finalTranslation: Translation = {
+            id: crypto.randomUUID(),
+            sourceText: text,
+            translatedText: message.payload.text,
+            sourceLang: message.payload.sourceLang || 'auto',
+            targetLang: message.payload.targetLang || 'ko',
+            provider: message.payload.provider || 'unknown',
+            timestamp: Date.now(),
+          }
+          updateWindowData(windowId, {
+            translation: finalTranslation,
+            isStreaming: false,
+          })
+          port.disconnect()
+        }
+      } else if (message.type === 'TRANSLATION_ERROR') {
+        updateWindowData(windowId, {
+          error: {
+            message: message.payload?.error || 'Translation failed',
+            errorCode: message.payload?.errorCode || 'UNKNOWN',
+            sourceText: text,
+          },
+          isStreaming: false,
+        })
+        port.disconnect()
+      }
+    })
+
+    port.onDisconnect.addListener(() => {
+      translationPortRef.current = null
+    })
+  }, [])
+
+  // Handle messages from the main port (background script)
+  const handlePortMessage = useCallback((message: any, windowId: number) => {
+    console.log('Port message received:', message.type)
+
+    switch (message.type) {
+      case 'TRANSLATION_HISTORY_RESPONSE':
+        if (message.success) {
+          setHistory(message.history || [])
+        }
+        break
+
+      case 'TRANSLATION_COMPLETE': {
+        const completeTranslation: Translation = {
+          id: crypto.randomUUID(),
+          sourceText: message.payload?.sourceText || '',
+          translatedText: message.payload?.translatedText,
+          sourceLang: message.payload?.sourceLang,
+          targetLang: message.payload?.targetLang,
+          provider: message.payload?.provider,
+          context: message.payload?.context,
+          timestamp: Date.now(),
+        }
+        updateWindowData(windowId, {
+          translation: completeTranslation,
+          error: null,
+          loading: false,
+        })
+        setActiveTab('translation')
+        break
+      }
+
+      case 'TRANSLATION_ERROR':
+        updateWindowData(windowId, {
+          error: {
+            message: message.payload?.error,
+            errorCode: message.payload?.errorCode || 'UNKNOWN',
+            sourceText: message.payload?.sourceText,
+          },
+          translation: null,
+          loading: false,
+        })
+        setActiveTab('translation')
+        break
+
+      case 'TRANSLATE_TEXT_STREAM_REQUEST':
+        console.log('Streaming translation request via port:', message.payload)
+        startStreamingTranslationInternal(message.payload.text, windowId)
+        break
+
+      default:
+        console.log('Unknown port message type:', message.type)
+    }
+  }, [startStreamingTranslationInternal])
+
   // Connect to background via dedicated port for this window
   useEffect(() => {
     chrome.windows.getCurrent().then((window) => {
@@ -102,131 +221,7 @@ function App() {
     return () => {
       mainPortRef.current?.disconnect()
     }
-  }, [])
-
-  // Handle messages from the main port (background script)
-  const handlePortMessage = useCallback((message: any, windowId: number) => {
-    console.log('Port message received:', message.type)
-
-    switch (message.type) {
-      case 'TRANSLATION_HISTORY_RESPONSE':
-        if (message.success) {
-          setHistory(message.history || [])
-        }
-        break
-
-      case 'TRANSLATION_COMPLETE':
-        const completeTranslation: Translation = {
-          id: crypto.randomUUID(),
-          sourceText: message.payload?.sourceText || '',
-          translatedText: message.payload?.translatedText,
-          sourceLang: message.payload?.sourceLang,
-          targetLang: message.payload?.targetLang,
-          provider: message.payload?.provider,
-          context: message.payload?.context,
-          timestamp: Date.now(),
-        }
-        updateWindowData(windowId, {
-          translation: completeTranslation,
-          error: null,
-          loading: false,
-        })
-        setActiveTab('translation')
-        break
-
-      case 'TRANSLATION_ERROR':
-        updateWindowData(windowId, {
-          error: {
-            message: message.payload?.error,
-            errorCode: message.payload?.errorCode || 'UNKNOWN',
-            sourceText: message.payload?.sourceText,
-          },
-          translation: null,
-          loading: false,
-        })
-        setActiveTab('translation')
-        break
-
-      case 'TRANSLATE_TEXT_STREAM_REQUEST':
-        console.log('Streaming translation request via port:', message.payload)
-        startStreamingTranslationInternal(message.payload.text, windowId)
-        break
-
-      default:
-        console.log('Unknown port message type:', message.type)
-    }
-  }, [])
-
-  // Internal streaming translation function (used by handlePortMessage)
-  const startStreamingTranslationInternal = (text: string, windowId: number) => {
-    // Disconnect existing port if any
-    if (translationPortRef.current) {
-      translationPortRef.current.disconnect()
-    }
-
-    updateWindowData(windowId, {
-      isStreaming: true,
-      streamingText: '',
-      streamingSourceText: text,
-      error: null,
-      loading: false,
-    })
-    setActiveTab('translation')
-
-    const port = chrome.runtime.connect({ name: 'translation-stream' })
-    translationPortRef.current = port
-
-    port.postMessage({
-      type: 'TRANSLATE_TEXT_STREAM',
-      payload: { text, windowId },
-    })
-
-    let fullText = ''
-
-    port.onMessage.addListener((message) => {
-      if (message.type === 'TRANSLATION_STREAM_CHUNK') {
-        fullText += message.chunk
-        updateWindowData(windowId, {
-          streamingText: fullText,
-        })
-      } else if (message.type === 'TRANSLATION_STREAM_DONE') {
-        const translation: Translation = {
-          id: crypto.randomUUID(),
-          sourceText: text,
-          translatedText: message.fullText,
-          sourceLang: message.sourceLang,
-          targetLang: message.targetLang,
-          provider: message.provider,
-          timestamp: Date.now(),
-        }
-
-        updateWindowData(windowId, {
-          translation,
-          isStreaming: false,
-          streamingText: '',
-          streamingSourceText: '',
-        })
-        port.disconnect()
-      } else if (message.type === 'TRANSLATION_STREAM_ERROR') {
-        updateWindowData(windowId, {
-          error: {
-            message: message.error,
-            errorCode: 'UNKNOWN',
-            sourceText: text,
-          },
-          isStreaming: false,
-          streamingText: '',
-          streamingSourceText: '',
-        })
-        port.disconnect()
-      }
-    })
-
-    port.onDisconnect.addListener(() => {
-      translationPortRef.current = null
-    })
-  }
-
+  }, [handlePortMessage])
 
   // Note: Message handling is now done via dedicated port in handlePortMessage
   // History is loaded when the port connects to background
