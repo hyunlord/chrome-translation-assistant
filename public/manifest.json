@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Translation & Learning Assistant",
-  "version": "1.0.7",
+  "version": "1.0.8",
   "description": "AI-powered translation with multi-provider support and cross-device sync",
   "permissions": [
     "activeTab",
