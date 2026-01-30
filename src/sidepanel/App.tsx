@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { TranslationCard } from './components/TranslationView/TranslationCard'
 import { TranslationError } from './components/TranslationView/TranslationError'
 import { ChatWindow } from './components/ChatInterface/ChatWindow'
@@ -77,71 +77,8 @@ function App() {
   // Translation stream port reference
   const translationPortRef = useRef<chrome.runtime.Port | null>(null)
 
-  // Listen for translation messages (filtered by windowId)
-  // Only set up listener after myWindowId is available to prevent race conditions
-  useEffect(() => {
-    // Don't set up listener until we know our window ID
-    if (myWindowId === null) return
-
-    const messageListener = (message: any) => {
-      const messageWindowId = message.payload?.windowId
-
-      // Only process messages for our window
-      if (messageWindowId !== myWindowId) return
-
-      if (message.type === 'TRANSLATION_COMPLETE') {
-        console.log('Translation received in side panel:', message.payload)
-
-        const translation: Translation = {
-          id: crypto.randomUUID(),
-          sourceText: message.payload.sourceText || '',
-          translatedText: message.payload.translatedText,
-          sourceLang: message.payload.sourceLang,
-          targetLang: message.payload.targetLang,
-          provider: message.payload.provider,
-          context: message.payload.context,
-          timestamp: Date.now(),
-        }
-
-        updateWindowData(myWindowId, {
-          translation,
-          error: null,
-          loading: false,
-        })
-        setActiveTab('translation')
-      }
-
-      if (message.type === 'TRANSLATION_ERROR') {
-        console.log('Translation error received in side panel:', message.payload)
-
-        updateWindowData(myWindowId, {
-          error: {
-            message: message.payload.error,
-            errorCode: message.payload.errorCode,
-            sourceText: message.payload.sourceText,
-          },
-          translation: null,
-          loading: false,
-        })
-        setActiveTab('translation')
-      }
-
-      // Handle streaming translation request from content script
-      if (message.type === 'TRANSLATE_TEXT_STREAM_REQUEST') {
-        console.log('Streaming translation request:', message.payload)
-        startStreamingTranslation(message.payload.text, myWindowId)
-      }
-    }
-
-    chrome.runtime.onMessage.addListener(messageListener)
-
-    return () => {
-      chrome.runtime.onMessage.removeListener(messageListener)
-    }
-  }, [myWindowId])
-
-  // Start streaming translation
-  const startStreamingTranslation = (text: string, windowId: number) => {
+  // Start streaming translation (memoized to avoid recreating on each render)
+  const startStreamingTranslation = useCallback((text: string, windowId: number) => {
     // Disconnect existing port if any
     if (translationPortRef.current) {
       translationPortRef.current.disconnect()
@@ -208,7 +145,70 @@ function App() {
     port.onDisconnect.addListener(() => {
       translationPortRef.current = null
     })
-  }
+  }, [])
+
+  // Listen for translation messages (filtered by windowId)
+  // Only set up listener after myWindowId is available to prevent race conditions
+  useEffect(() => {
+    // Don't set up listener until we know our window ID
+    if (myWindowId === null) return
+
+    const messageListener = (message: any) => {
+      const messageWindowId = message.payload?.windowId
+
+      // Only process messages for our window
+      if (messageWindowId !== myWindowId) return
+
+      if (message.type === 'TRANSLATION_COMPLETE') {
+        console.log('Translation received in side panel:', message.payload)
+
+        const translation: Translation = {
+          id: crypto.randomUUID(),
+          sourceText: message.payload.sourceText || '',
+          translatedText: message.payload.translatedText,
+          sourceLang: message.payload.sourceLang,
+          targetLang: message.payload.targetLang,
+          provider: message.payload.provider,
+          context: message.payload.context,
+          timestamp: Date.now(),
+        }
+
+        updateWindowData(myWindowId, {
+          translation,
+          error: null,
+          loading: false,
+        })
+        setActiveTab('translation')
+      }
+
+      if (message.type === 'TRANSLATION_ERROR') {
+        console.log('Translation error received in side panel:', message.payload)
+
+        updateWindowData(myWindowId, {
+          error: {
+            message: message.payload.error,
+            errorCode: message.payload.errorCode,
+            sourceText: message.payload.sourceText,
+          },
+          translation: null,
+          loading: false,
+        })
+        setActiveTab('translation')
+      }
+
+      // Handle streaming translation request from content script
+      if (message.type === 'TRANSLATE_TEXT_STREAM_REQUEST') {
+        console.log('Streaming translation request:', message.payload)
+        startStreamingTranslation(message.payload.text, myWindowId)
+      }
+    }
+
+    chrome.runtime.onMessage.addListener(messageListener)
+
+    return () => {
+      chrome.runtime.onMessage.removeListener(messageListener)
+    }
+  }, [myWindowId, startStreamingTranslation])
 
   // Load history on mount
   useEffect(() => {
