@@ -12,8 +12,14 @@ interface SelectionInfo {
 }
 
 let selectionTimeout: ReturnType<typeof setTimeout> | null = null
+let mousedownHandler: ((e: MouseEvent) => void) | null = null
+let isInitialized = false
 
 export function initializeTextSelection() {
+  // Prevent double initialization
+  if (isInitialized) return
+  isInitialized = true
+
   console.log('Translation Assistant: Text selection handler initialized')
 
   // Handle text selection
@@ -21,12 +27,41 @@ export function initializeTextSelection() {
   document.addEventListener('selectionchange', handleSelectionChange)
 
   // Hide tooltip when clicking elsewhere
-  document.addEventListener('mousedown', (e) => {
+  mousedownHandler = (e: MouseEvent) => {
     const target = e.target as HTMLElement
     if (!target.closest('.translation-tooltip')) {
       hideTooltip()
     }
-  })
+  }
+  document.addEventListener('mousedown', mousedownHandler)
+}
+
+/**
+ * Cleanup function to remove all event listeners
+ */
+export function cleanupTextSelection() {
+  if (!isInitialized) return
+
+  // Clear pending timeout
+  if (selectionTimeout) {
+    clearTimeout(selectionTimeout)
+    selectionTimeout = null
+  }
+
+  // Remove event listeners
+  document.removeEventListener('mouseup', handleMouseUp)
+  document.removeEventListener('selectionchange', handleSelectionChange)
+
+  if (mousedownHandler) {
+    document.removeEventListener('mousedown', mousedownHandler)
+    mousedownHandler = null
+  }
+
+  // Hide any visible tooltip
+  hideTooltip()
+
+  isInitialized = false
+  console.log('Translation Assistant: Text selection handler cleaned up')
 }
 
 function handleMouseUp(event: MouseEvent) {

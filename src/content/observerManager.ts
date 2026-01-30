@@ -15,6 +15,7 @@ export type UrlChangeCallback = () => void
 export class ParagraphObserverManager {
   private intersectionObserver: IntersectionObserver | null = null
   private mutationObserver: MutationObserver | null = null
+  private urlWatcher: MutationObserver | null = null
   private visibleParagraphs: Set<string> = new Set()
   private observedElements: Map<string, HTMLElement> = new Map()
 
@@ -24,6 +25,12 @@ export class ParagraphObserverManager {
 
   private lastUrl: string = ''
   private isDestroyed: boolean = false
+
+  // Store original history methods for cleanup
+  private originalPushState: typeof history.pushState | null = null
+  private originalReplaceState: typeof history.replaceState | null = null
+  private popstateHandler: (() => void) | null = null
+  private scrollHandler: (() => void) | null = null
 
   constructor(
     onVisibilityChange: VisibilityCallback,
@@ -109,7 +116,7 @@ export class ParagraphObserverManager {
     this.lastUrl = location.href
 
     // Watch for URL changes via MutationObserver on document
-    const urlWatcher = new MutationObserver(() => {
+    this.urlWatcher = new MutationObserver(() => {
       if (this.isDestroyed) return
 
       const currentUrl = location.href
@@ -119,21 +126,22 @@ export class ParagraphObserverManager {
       }
     })
 
-    urlWatcher.observe(document, { subtree: true, childList: true })
+    this.urlWatcher.observe(document, { subtree: true, childList: true })
 
     // Also listen to popstate for browser back/forward
-    window.addEventListener('popstate', () => {
+    this.popstateHandler = () => {
       if (!this.isDestroyed) {
         this.onUrlChange()
       }
-    })
+    }
+    window.addEventListener('popstate', this.popstateHandler)
 
     // Listen to pushState and replaceState (for SPAs)
-    const originalPushState = history.pushState
-    const originalReplaceState = history.replaceState
+    this.originalPushState = history.pushState
+    this.originalReplaceState = history.replaceState
 
     history.pushState = (...args) => {
-      originalPushState.apply(history, args)
+      this.originalPushState?.apply(history, args)
       if (!this.isDestroyed) {
         this.lastUrl = location.href
         this.onUrlChange()
@@ -141,7 +149,7 @@ export class ParagraphObserverManager {
     }
 
     history.replaceState = (...args) => {
-      originalReplaceState.apply(history, args)
+      this.originalReplaceState?.apply(history, args)
       if (!this.isDestroyed) {
         this.lastUrl = location.href
         this.onUrlChange()
@@ -153,7 +161,7 @@ export class ParagraphObserverManager {
    * Setup scroll watcher for infinite scroll detection
    */
   private setupScrollWatcher(): void {
-    const throttledScroll = throttle(() => {
+    this.scrollHandler = throttle(() => {
       if (this.isDestroyed) return
 
       const scrollPosition = window.scrollY + window.innerHeight
@@ -166,7 +174,7 @@ export class ParagraphObserverManager {
       }
     }, 300) // Throttle to every 300ms
 
-    window.addEventListener('scroll', throttledScroll, { passive: true })
+    window.addEventListener('scroll', this.scrollHandler, { passive: true })
   }
 
   /**
@@ -297,6 +305,34 @@ export class ParagraphObserverManager {
     if (this.mutationObserver) {
       this.mutationObserver.disconnect()
       this.mutationObserver = null
+    }
+
+    // Cleanup URL watcher
+    if (this.urlWatcher) {
+      this.urlWatcher.disconnect()
+      this.urlWatcher = null
+    }
+
+    // Remove popstate listener
+    if (this.popstateHandler) {
+      window.removeEventListener('popstate', this.popstateHandler)
+      this.popstateHandler = null
+    }
+
+    // Remove scroll listener
+    if (this.scrollHandler) {
+      window.removeEventListener('scroll', this.scrollHandler)
+      this.scrollHandler = null
+    }
+
+    // Restore original history methods
+    if (this.originalPushState) {
+      history.pushState = this.originalPushState
+      this.originalPushState = null
+    }
+    if (this.originalReplaceState) {
+      history.replaceState = this.originalReplaceState
+      this.originalReplaceState = null
     }
 
     this.observedElements.clear()

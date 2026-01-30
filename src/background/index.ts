@@ -48,6 +48,13 @@ async function initializeProviders() {
       if (apiKeys.gemini) {
         providerManager.registerProvider('gemini', { apiKey: apiKeys.gemini })
       }
+      if (apiKeys.openrouter) {
+        const settings = await localStorage.get<{ openrouterModel?: string }>('settings')
+        providerManager.registerProvider('openrouter', {
+          apiKey: apiKeys.openrouter,
+          model: settings?.openrouterModel || 'google/gemini-2.5-flash',
+        })
+      }
     }
 
     // Set default provider
@@ -200,11 +207,11 @@ async function handleTranslation(payload: any, sendResponse: (response: any) => 
       cached: false,
     })
 
-    // Notify side panel
+    // Notify side panel (ignore errors if panel is not open)
     chrome.runtime.sendMessage({
       type: 'TRANSLATION_COMPLETE',
       payload: result,
-    })
+    }).catch(() => { /* Side panel not open, ignore */ })
   } catch (error) {
     console.error('Translation error:', error)
     sendResponse({
@@ -429,8 +436,8 @@ ${batchText}`
         text: batchPrompt,
         targetLang,
         context: {
-          url: batch[0].context.url,
-          title: batch[0].context.title,
+          url: batch[0]?.context?.url || '',
+          title: batch[0]?.context?.title || '',
         },
       })
 
@@ -438,7 +445,8 @@ ${batchText}`
       const translations = result.translatedText.split('---').map((t: string) => t.trim())
 
       // Match translations to paragraphs
-      batch.forEach((paragraph, index) => {
+      for (let index = 0; index < batch.length; index++) {
+        const paragraph = batch[index]
         const translatedText = translations[index] || batch[index].text // Fallback to original
 
         // Remove numbering if present (like "[1]")
@@ -460,7 +468,7 @@ ${batchText}`
         )
 
         // Save to history
-        saveTranslationToHistory({
+        await saveTranslationToHistory({
           sourceText: paragraph.text,
           translatedText: cleanedTranslation,
           sourceLang: result.sourceLang,
@@ -469,7 +477,7 @@ ${batchText}`
           context: paragraph.context,
           timestamp: Date.now(),
         })
-      })
+      }
     }
 
     // Combine cached and new translations
@@ -494,7 +502,7 @@ async function handleToggleAutoTranslate(
   sendResponse: (response: any) => void
 ) {
   try {
-    const settings = await localStorage.get<any>('settings')
+    const settings = (await localStorage.get<any>('settings')) || {}
     settings.autoTranslate = payload.enabled
     await localStorage.set('settings', settings)
 

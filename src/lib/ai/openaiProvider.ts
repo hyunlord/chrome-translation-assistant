@@ -10,11 +10,11 @@ import {
 
 export class OpenAIProvider extends BaseAIProvider {
   private readonly apiEndpoint = 'https://api.openai.com/v1/chat/completions'
-  private readonly defaultModel = 'gpt-4-turbo-preview'
+  private readonly defaultModel = 'gpt-4o'
 
   constructor(config: AIProviderConfig) {
     super('openai', {
-      model: config.model || 'gpt-4-turbo-preview',
+      model: config.model || 'gpt-4o',
       temperature: config.temperature ?? 0.3,
       maxTokens: config.maxTokens ?? 4096,
       ...config,

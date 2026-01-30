@@ -10,11 +10,11 @@ import {
 
 export class GeminiProvider extends BaseAIProvider {
   private readonly apiEndpoint = 'https://generativelanguage.googleapis.com/v1beta/models'
-  private readonly defaultModel = 'gemini-pro'
+  private readonly defaultModel = 'gemini-1.5-flash'
 
   constructor(config: AIProviderConfig) {
     super('gemini', {
-      model: config.model || 'gemini-pro',
+      model: config.model || 'gemini-1.5-flash',
       temperature: config.temperature ?? 0.3,
       maxTokens: config.maxTokens ?? 4096,
       ...config,
