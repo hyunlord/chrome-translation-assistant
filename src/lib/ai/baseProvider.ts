@@ -46,6 +46,21 @@ export interface ChatResponse {
 
 export type AIProviderType = 'claude' | 'openai' | 'gemini' | 'openrouter'
 
+export type ValidationErrorCode = 'INVALID_KEY' | 'NETWORK_ERROR' | 'RATE_LIMIT' | 'EXPIRED' | 'WRONG_FORMAT'
+
+export interface ValidationResult {
+  valid: boolean
+  error?: string
+  errorCode?: ValidationErrorCode
+}
+
+export interface AccountBalance {
+  credits: number
+  currency: string
+  limit?: number
+  usage?: number
+}
+
 export interface AIProviderConfig {
   apiKey: string
   model?: string
@@ -126,9 +141,17 @@ export abstract class BaseAIProvider {
   }
 
   /**
-   * Validate API key
+   * Validate API key with detailed error information
    */
-  abstract validateApiKey(): Promise<boolean>
+  abstract validateApiKey(): Promise<ValidationResult>
+
+  /**
+   * Get account balance/credits (optional - not all providers support this)
+   */
+  async getAccountBalance(): Promise<AccountBalance | null> {
+    // Default: not supported
+    return null
+  }
 
   /**
    * Build system prompt for translation

@@ -6,6 +6,7 @@ import {
   TranslationResponse,
   ChatRequest,
   ChatResponse,
+  ValidationResult,
 } from './baseProvider'
 
 // Popular OpenRouter models (Updated Jan 2026)
@@ -188,7 +189,7 @@ export class OpenRouterProvider extends BaseAIProvider {
     }
   }
 
-  async validateApiKey(): Promise<boolean> {
+  async validateApiKey(): Promise<ValidationResult> {
     try {
       // Use a free model for validation to avoid costs
       const response = await fetch(this.apiEndpoint, {
@@ -201,10 +202,57 @@ export class OpenRouterProvider extends BaseAIProvider {
         }),
       })
 
-      return response.ok
+      if (response.ok) {
+        return { valid: true }
+      }
+
+      const errorText = await response.text()
+      if (response.status === 401 || response.status === 403) {
+        return { valid: false, error: 'Invalid API key', errorCode: 'INVALID_KEY' }
+      }
+      if (response.status === 429) {
+        return { valid: false, error: 'Rate limit exceeded', errorCode: 'RATE_LIMIT' }
+      }
+
+      return { valid: false, error: errorText || 'Validation failed', errorCode: 'INVALID_KEY' }
     } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown error'
       console.error('OpenRouter API key validation failed:', error)
-      return false
+
+      if (message.includes('fetch') || message.includes('network')) {
+        return { valid: false, error: 'Network error - could not connect', errorCode: 'NETWORK_ERROR' }
+      }
+
+      return { valid: false, error: message, errorCode: 'NETWORK_ERROR' }
+    }
+  }
+
+  async getAccountBalance(): Promise<{ credits: number; currency: string; limit?: number; usage?: number } | null> {
+    try {
+      const response = await fetch('https://openrouter.ai/api/v1/auth/key', {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${this.config.apiKey}`,
+        },
+      })
+
+      if (!response.ok) {
+        return null
+      }
+
+      const data = await response.json()
+      const limit = data.data?.limit ?? 0
+      const usage = data.data?.usage ?? 0
+
+      return {
+        credits: limit - usage,
+        currency: 'USD',
+        limit,
+        usage,
+      }
+    } catch (error) {
+      console.error('Failed to fetch OpenRouter balance:', error)
+      return null
     }
   }
 

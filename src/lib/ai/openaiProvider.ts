@@ -6,6 +6,7 @@ import {
   TranslationResponse,
   ChatRequest,
   ChatResponse,
+  ValidationResult,
 } from './baseProvider'
 
 export class OpenAIProvider extends BaseAIProvider {
@@ -164,7 +165,7 @@ export class OpenAIProvider extends BaseAIProvider {
     }
   }
 
-  async validateApiKey(): Promise<boolean> {
+  async validateApiKey(): Promise<ValidationResult> {
     try {
       const response = await fetch(this.apiEndpoint, {
         method: 'POST',
@@ -176,10 +177,28 @@ export class OpenAIProvider extends BaseAIProvider {
         }),
       })
 
-      return response.ok
+      if (response.ok) {
+        return { valid: true }
+      }
+
+      const errorText = await response.text()
+      if (response.status === 401) {
+        return { valid: false, error: 'Invalid API key', errorCode: 'INVALID_KEY' }
+      }
+      if (response.status === 429) {
+        return { valid: false, error: 'Rate limit exceeded', errorCode: 'RATE_LIMIT' }
+      }
+
+      return { valid: false, error: errorText || 'Validation failed', errorCode: 'INVALID_KEY' }
     } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown error'
       console.error('API key validation failed:', error)
-      return false
+
+      if (message.includes('fetch') || message.includes('network')) {
+        return { valid: false, error: 'Network error - could not connect', errorCode: 'NETWORK_ERROR' }
+      }
+
+      return { valid: false, error: message, errorCode: 'NETWORK_ERROR' }
     }
   }
 

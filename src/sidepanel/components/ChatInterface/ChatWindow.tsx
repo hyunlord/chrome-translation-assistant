@@ -22,16 +22,73 @@ export function ChatWindow({ translationContext }: ChatWindowProps) {
   const [input, setInput] = useState('')
   const [sending, setSending] = useState(false)
   const [streaming, setStreaming] = useState(false)
+  const [isComposing, setIsComposing] = useState(false) // IME composition state
   const messagesEndRef = useRef<HTMLDivElement>(null)
+  const scrollContainerRef = useRef<HTMLDivElement>(null)
+  const shouldAutoScroll = useRef(true)
 
-  // Auto-scroll to bottom
+  // Check if user is near bottom of scroll container
+  const isNearBottom = () => {
+    const container = scrollContainerRef.current
+    if (!container) return true
+    const threshold = 100 // px
+    return container.scrollHeight - container.scrollTop - container.clientHeight < threshold
+  }
+
+  // Auto-scroll to bottom (only if user is near bottom)
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }
 
+  // Track scroll position to determine if we should auto-scroll
+  const handleScroll = () => {
+    shouldAutoScroll.current = isNearBottom()
+  }
+
   useEffect(() => {
-    scrollToBottom()
+    if (shouldAutoScroll.current) {
+      scrollToBottom()
+    }
   }, [messages])
+
+  // Load chat history on mount
+  useEffect(() => {
+    loadChatHistory()
+  }, [])
+
+  // Save chat history when messages change (skip initial load)
+  const isInitialMount = useRef(true)
+  useEffect(() => {
+    if (isInitialMount.current) {
+      isInitialMount.current = false
+      return
+    }
+    if (messages.length > 0) {
+      saveChatHistory(messages)
+    }
+  }, [messages])
+
+  const loadChatHistory = async () => {
+    try {
+      const response = await chrome.runtime.sendMessage({ type: 'GET_CHAT_HISTORY' })
+      if (response.success && response.history?.length > 0) {
+        setMessages(response.history)
+      }
+    } catch (e) {
+      console.error('Failed to load chat history:', e)
+    }
+  }
+
+  const saveChatHistory = async (msgs: ChatMessage[]) => {
+    try {
+      await chrome.runtime.sendMessage({
+        type: 'SAVE_CHAT_HISTORY',
+        payload: { messages: msgs },
+      })
+    } catch (e) {
+      console.error('Failed to save chat history:', e)
+    }
+  }
 
   // Add initial context message
   useEffect(() => {
@@ -49,6 +106,9 @@ export function ChatWindow({ translationContext }: ChatWindowProps) {
 
   const handleSendMessage = async () => {
     if (!input.trim() || sending) return
+
+    // Enable auto-scroll when user sends a message
+    shouldAutoScroll.current = true
 
     const userMessage: ChatMessage = {
       id: crypto.randomUUID(),
@@ -147,7 +207,8 @@ export function ChatWindow({ translationContext }: ChatWindowProps) {
   }
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
+    // Don't send on Enter during IME composition (Korean, Japanese, Chinese input)
+    if (e.key === 'Enter' && !e.shiftKey && !isComposing) {
       e.preventDefault()
       handleSendMessage()
     }
@@ -156,7 +217,11 @@ export function ChatWindow({ translationContext }: ChatWindowProps) {
   return (
     <div className="flex flex-col h-full">
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-4">
+      <div
+        ref={scrollContainerRef}
+        onScroll={handleScroll}
+        className="flex-1 overflow-y-auto p-4 space-y-4"
+      >
         {messages.length === 0 && (
           <div className="text-center py-8">
             <svg
@@ -229,6 +294,8 @@ export function ChatWindow({ translationContext }: ChatWindowProps) {
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
+            onCompositionStart={() => setIsComposing(true)}
+            onCompositionEnd={() => setIsComposing(false)}
             placeholder="Ask a question..."
             rows={1}
             className="flex-1 px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-primary-500 focus:border-transparent resize-none"

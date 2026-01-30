@@ -7,6 +7,7 @@ import {
   ChatRequest,
   ChatResponse,
   ChatMessage,
+  ValidationResult,
 } from './baseProvider'
 
 interface ClaudeMessage {
@@ -208,7 +209,7 @@ export class ClaudeProvider extends BaseAIProvider {
     }
   }
 
-  async validateApiKey(): Promise<boolean> {
+  async validateApiKey(): Promise<ValidationResult> {
     try {
       const testRequest: ClaudeRequest = {
         model: this.defaultModel,
@@ -217,10 +218,22 @@ export class ClaudeProvider extends BaseAIProvider {
       }
 
       await this.makeRequest<ClaudeResponse>(testRequest)
-      return true
+      return { valid: true }
     } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown error'
       console.error('API key validation failed:', error)
-      return false
+
+      if (message.includes('401') || message.includes('invalid') || message.includes('authentication')) {
+        return { valid: false, error: 'Invalid API key', errorCode: 'INVALID_KEY' }
+      }
+      if (message.includes('429') || message.includes('rate')) {
+        return { valid: false, error: 'Rate limit exceeded', errorCode: 'RATE_LIMIT' }
+      }
+      if (message.includes('fetch') || message.includes('network')) {
+        return { valid: false, error: 'Network error - could not connect', errorCode: 'NETWORK_ERROR' }
+      }
+
+      return { valid: false, error: message, errorCode: 'INVALID_KEY' }
     }
   }
 

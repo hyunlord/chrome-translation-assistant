@@ -119,6 +119,14 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       handleChatMessage(message.payload, sendResponse)
       return true
 
+    case 'GET_CHAT_HISTORY':
+      handleGetChatHistory(sendResponse)
+      return true
+
+    case 'SAVE_CHAT_HISTORY':
+      handleSaveChatHistory(message.payload, sendResponse)
+      return true
+
     case 'TRANSLATE_PARAGRAPHS_BATCH':
       handleBatchTranslation(message.payload, sendResponse)
       return true
@@ -221,11 +229,42 @@ async function handleTranslation(
     }).catch(() => { /* Side panel not open, ignore */ })
   } catch (error) {
     console.error('Translation error:', error)
+    const errorMessage = error instanceof Error ? error.message : 'Translation failed'
+
     sendResponse({
       success: false,
-      error: error instanceof Error ? error.message : 'Translation failed',
+      error: errorMessage,
     })
+
+    // Notify side panel of error
+    chrome.runtime.sendMessage({
+      type: 'TRANSLATION_ERROR',
+      payload: {
+        error: errorMessage,
+        errorCode: categorizeError(error),
+        sourceText: payload.text,
+        windowId,
+      },
+    }).catch(() => { /* Side panel not open, ignore */ })
   }
+}
+
+// Categorize errors for user-friendly feedback
+function categorizeError(error: unknown): string {
+  const msg = error instanceof Error ? error.message.toLowerCase() : ''
+  if (msg.includes('401') || msg.includes('unauthorized') || msg.includes('invalid api key') || msg.includes('authentication')) {
+    return 'API_KEY_INVALID'
+  }
+  if (msg.includes('429') || msg.includes('rate limit') || msg.includes('too many requests')) {
+    return 'RATE_LIMIT'
+  }
+  if (msg.includes('network') || msg.includes('fetch') || msg.includes('failed to fetch') || msg.includes('econnrefused')) {
+    return 'NETWORK_ERROR'
+  }
+  if (msg.includes('503') || msg.includes('502') || msg.includes('service unavailable')) {
+    return 'SERVICE_UNAVAILABLE'
+  }
+  return 'UNKNOWN'
 }
 
 // Save translation to history
@@ -260,6 +299,33 @@ async function handleGetHistory(sendResponse: (response: any) => void) {
   } catch (error) {
     console.error('Error getting history:', error)
     sendResponse({ success: false, error: 'Failed to get history' })
+  }
+}
+
+// Get chat history
+async function handleGetChatHistory(sendResponse: (response: any) => void) {
+  try {
+    const history = (await localStorage.get<any[]>('chatHistory')) || []
+    sendResponse({ success: true, history })
+  } catch (error) {
+    console.error('Error getting chat history:', error)
+    sendResponse({ success: false, error: 'Failed to get chat history' })
+  }
+}
+
+// Save chat history
+async function handleSaveChatHistory(
+  payload: { messages: any[] },
+  sendResponse: (response: any) => void
+) {
+  try {
+    // Keep only last 100 messages to avoid storage bloat
+    const messages = payload.messages.slice(-100)
+    await localStorage.set('chatHistory', messages)
+    sendResponse({ success: true })
+  } catch (error) {
+    console.error('Error saving chat history:', error)
+    sendResponse({ success: false, error: 'Failed to save chat history' })
   }
 }
 

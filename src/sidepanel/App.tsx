@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { TranslationCard } from './components/TranslationView/TranslationCard'
+import { TranslationError } from './components/TranslationView/TranslationError'
 import { ChatWindow } from './components/ChatInterface/ChatWindow'
 
 interface Translation {
@@ -17,12 +18,43 @@ interface Translation {
   timestamp: number
 }
 
+interface ErrorState {
+  message: string
+  errorCode: string
+  sourceText: string
+}
+
+interface WindowData {
+  translation: Translation | null
+  error: ErrorState | null
+  loading: boolean
+}
+
 function App() {
   const [activeTab, setActiveTab] = useState<'translation' | 'chat' | 'history'>('translation')
-  const [currentTranslation, setCurrentTranslation] = useState<Translation | null>(null)
   const [history, setHistory] = useState<Translation[]>([])
-  const [loading, setLoading] = useState(false)
   const [myWindowId, setMyWindowId] = useState<number | null>(null)
+  // Store data per window to prevent cross-window state sharing
+  const [dataByWindow, setDataByWindow] = useState<Record<number, WindowData>>({})
+
+  // Derived state for current window
+  const currentWindowData = myWindowId ? dataByWindow[myWindowId] : null
+  const currentTranslation = currentWindowData?.translation ?? null
+  const error = currentWindowData?.error ?? null
+  const loading = currentWindowData?.loading ?? false
+
+  // Helper to update current window's data
+  const updateWindowData = (windowId: number, updates: Partial<WindowData>) => {
+    setDataByWindow((prev) => ({
+      ...prev,
+      [windowId]: {
+        translation: prev[windowId]?.translation ?? null,
+        error: prev[windowId]?.error ?? null,
+        loading: prev[windowId]?.loading ?? false,
+        ...updates,
+      },
+    }))
+  }
 
   // Get current window ID on mount
   useEffect(() => {
@@ -35,32 +67,58 @@ function App() {
   // Listen for translation messages (filtered by windowId)
   useEffect(() => {
     const messageListener = (message: any) => {
-      if (message.type === 'TRANSLATION_COMPLETE') {
-        // Filter by windowId - only process if this is our window's translation
-        const messageWindowId = message.payload?.windowId
-        if (messageWindowId !== undefined && myWindowId !== null && messageWindowId !== myWindowId) {
-          console.log('Ignoring translation from different window:', messageWindowId, 'my window:', myWindowId)
-          return
-        }
+      // Get the windowId from the message
+      const messageWindowId = message.payload?.windowId
 
+      if (message.type === 'TRANSLATION_COMPLETE') {
         console.log('Translation received in side panel:', message.payload)
 
-        const translation: Translation = {
-          id: crypto.randomUUID(),
-          sourceText: message.payload.sourceText || '',
-          translatedText: message.payload.translatedText,
-          sourceLang: message.payload.sourceLang,
-          targetLang: message.payload.targetLang,
-          provider: message.payload.provider,
-          context: message.payload.context,
-          timestamp: Date.now(),
+        // Only update state for the specific window
+        if (messageWindowId !== undefined) {
+          const translation: Translation = {
+            id: crypto.randomUUID(),
+            sourceText: message.payload.sourceText || '',
+            translatedText: message.payload.translatedText,
+            sourceLang: message.payload.sourceLang,
+            targetLang: message.payload.targetLang,
+            provider: message.payload.provider,
+            context: message.payload.context,
+            timestamp: Date.now(),
+          }
+
+          updateWindowData(messageWindowId, {
+            translation,
+            error: null,
+            loading: false,
+          })
+
+          // Switch to translation tab only if this is our window
+          if (messageWindowId === myWindowId) {
+            setActiveTab('translation')
+          }
         }
+      }
 
-        setCurrentTranslation(translation)
-        setLoading(false)
+      if (message.type === 'TRANSLATION_ERROR') {
+        console.log('Translation error received in side panel:', message.payload)
 
-        // Switch to translation tab
-        setActiveTab('translation')
+        // Only update state for the specific window
+        if (messageWindowId !== undefined) {
+          updateWindowData(messageWindowId, {
+            error: {
+              message: message.payload.error,
+              errorCode: message.payload.errorCode,
+              sourceText: message.payload.sourceText,
+            },
+            translation: null,
+            loading: false,
+          })
+
+          // Switch to translation tab only if this is our window
+          if (messageWindowId === myWindowId) {
+            setActiveTab('translation')
+          }
+        }
       }
     }
 
@@ -93,8 +151,34 @@ function App() {
   }
 
   const handleHistoryItemClick = (translation: Translation) => {
-    setCurrentTranslation(translation)
+    if (myWindowId !== null) {
+      updateWindowData(myWindowId, {
+        translation,
+        error: null,
+      })
+    }
     setActiveTab('translation')
+  }
+
+  const handleRetry = () => {
+    if (!error?.sourceText || myWindowId === null) return
+
+    updateWindowData(myWindowId, {
+      error: null,
+      loading: true,
+    })
+
+    chrome.runtime.sendMessage({
+      type: 'TRANSLATE_TEXT',
+      payload: {
+        text: error.sourceText,
+        action: 'translate',
+      },
+    })
+  }
+
+  const handleOpenSettings = () => {
+    chrome.runtime.openOptionsPage()
   }
 
   return (
@@ -160,7 +244,17 @@ function App() {
               </div>
             )}
 
-            {!loading && currentTranslation && (
+            {!loading && error && (
+              <TranslationError
+                error={error.message}
+                errorCode={error.errorCode}
+                sourceText={error.sourceText}
+                onRetry={handleRetry}
+                onOpenSettings={handleOpenSettings}
+              />
+            )}
+
+            {!loading && !error && currentTranslation && (
               <TranslationCard
                 sourceText={currentTranslation.sourceText}
                 translatedText={currentTranslation.translatedText}
@@ -173,7 +267,7 @@ function App() {
               />
             )}
 
-            {!loading && !currentTranslation && (
+            {!loading && !error && !currentTranslation && (
               <div className="card">
                 <div className="text-center py-8">
                   <svg

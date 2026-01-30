@@ -58,6 +58,13 @@ function Options() {
   })
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
   const [usageStats, setUsageStats] = useState<UsageStats | null>(null)
+  const [accountBalance, setAccountBalance] = useState<{
+    credits: number
+    currency: string
+    limit?: number
+    usage?: number
+  } | null>(null)
+  const [loadingBalance, setLoadingBalance] = useState(false)
 
   // Load settings on mount
   useEffect(() => {
@@ -97,6 +104,27 @@ function Options() {
   const showMessage = (type: 'success' | 'error', text: string) => {
     setMessage({ type, text })
     setTimeout(() => setMessage(null), 3000)
+  }
+
+  const fetchAccountBalance = async (apiKey?: string) => {
+    const keyToUse = apiKey || apiKeys.openrouter
+    if (!keyToUse || settings.defaultProvider !== 'openrouter') {
+      setAccountBalance(null)
+      return
+    }
+
+    setLoadingBalance(true)
+    try {
+      const { OpenRouterProvider } = await import('../lib/ai/openrouterProvider')
+      const provider = new OpenRouterProvider({ apiKey: keyToUse })
+      const balance = await provider.getAccountBalance()
+      setAccountBalance(balance)
+    } catch (error) {
+      console.error('Failed to fetch balance:', error)
+      setAccountBalance(null)
+    } finally {
+      setLoadingBalance(false)
+    }
   }
 
   const handleSaveSettings = async () => {
@@ -141,6 +169,14 @@ function Options() {
       return
     }
 
+    // Pre-validate format
+    const { preValidateApiKey } = await import('../lib/utils/apiKeyValidator')
+    const formatResult = preValidateApiKey(settings.defaultProvider, currentApiKey)
+    if (!formatResult.valid) {
+      showMessage('error', formatResult.error || 'Invalid API key format')
+      return
+    }
+
     setValidating(true)
 
     try {
@@ -150,16 +186,21 @@ function Options() {
         model: settings.defaultProvider === 'openrouter' ? settings.openrouterModel : undefined,
       })
 
-      const isValid = await provider.validateApiKey()
+      const result = await provider.validateApiKey()
 
-      if (isValid) {
+      if (result.valid) {
         showMessage('success', 'API key is valid!')
+
+        // Fetch account balance for OpenRouter
+        if (settings.defaultProvider === 'openrouter') {
+          fetchAccountBalance(currentApiKey)
+        }
       } else {
-        showMessage('error', 'Invalid API key')
+        showMessage('error', result.error || 'Invalid API key')
       }
     } catch (error) {
       console.error('Validation error:', error)
-      showMessage('error', 'Failed to validate API key')
+      showMessage('error', 'Failed to validate API key: Network error')
     } finally {
       setValidating(false)
     }
@@ -632,6 +673,38 @@ function Options() {
                       )}
                     </div>
                   </div>
+
+                  {/* OpenRouter Account Balance */}
+                  {settings.defaultProvider === 'openrouter' && (
+                    <div className="p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-800">
+                      <div className="flex justify-between items-center">
+                        <span className="text-sm font-medium text-blue-800 dark:text-blue-200">
+                          OpenRouter Credits
+                        </span>
+                        {loadingBalance ? (
+                          <span className="text-sm text-blue-600 dark:text-blue-400">Loading...</span>
+                        ) : accountBalance ? (
+                          <div className="text-right">
+                            <span className="text-lg font-bold text-blue-800 dark:text-blue-200">
+                              ${accountBalance.credits.toFixed(4)}
+                            </span>
+                            {accountBalance.limit !== undefined && accountBalance.usage !== undefined && (
+                              <p className="text-xs text-blue-600 dark:text-blue-400">
+                                Used: ${accountBalance.usage.toFixed(4)} / ${accountBalance.limit.toFixed(2)}
+                              </p>
+                            )}
+                          </div>
+                        ) : (
+                          <button
+                            onClick={() => fetchAccountBalance()}
+                            className="text-sm text-blue-600 dark:text-blue-400 hover:underline"
+                          >
+                            Check Balance
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  )}
 
                   {/* All-Time Usage */}
                   <div>
