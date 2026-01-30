@@ -226,40 +226,52 @@ function App() {
 
   // Connect to background via dedicated port for this tab
   useEffect(() => {
-    // URL에서 windowId와 tabId 파싱 (background에서 setOptions로 설정됨)
-    const params = new URLSearchParams(window.location.search)
-    const windowIdParam = params.get('windowId')
-    const tabIdParam = params.get('tabId')
+    // 현재 윈도우와 활성 탭 정보를 직접 조회
+    const initializeConnection = async () => {
+      try {
+        // 1. 현재 윈도우 ID 가져오기
+        const currentWindow = await chrome.windows.getCurrent()
+        const windowId = currentWindow.id
+        if (!windowId) {
+          console.error('Could not get current window ID')
+          return
+        }
 
-    const windowId = windowIdParam ? parseInt(windowIdParam, 10) : null
-    const tabId = tabIdParam ? parseInt(tabIdParam, 10) : null
+        // 2. 현재 윈도우의 활성 탭 가져오기
+        const [activeTab] = await chrome.tabs.query({ active: true, windowId })
+        const tabId = activeTab?.id
+        if (!tabId) {
+          console.error('Could not get active tab ID')
+          return
+        }
 
-    if (!windowId || !tabId || isNaN(windowId) || isNaN(tabId)) {
-      console.error('Invalid windowId or tabId in URL:', window.location.search)
-      return
+        setMyWindowId(windowId)
+        setMyTabId(tabId)
+        console.log(`Side panel initialized for window ${windowId}, tab ${tabId}`)
+
+        // Connect to background with tab-specific port name
+        const port = chrome.runtime.connect({ name: `sidepanel-${windowId}-${tabId}` })
+        mainPortRef.current = port
+        console.log(`Connected to background via sidepanel-${windowId}-${tabId}`)
+
+        // Handle messages from background (tab-specific)
+        port.onMessage.addListener((message) => {
+          handlePortMessage(message, windowId)
+        })
+
+        port.onDisconnect.addListener(() => {
+          console.log('Main port disconnected')
+          mainPortRef.current = null
+        })
+
+        // Load history via port
+        port.postMessage({ type: 'GET_TRANSLATION_HISTORY' })
+      } catch (error) {
+        console.error('Failed to initialize side panel connection:', error)
+      }
     }
 
-    setMyWindowId(windowId)
-    setMyTabId(tabId)
-    console.log(`Side panel initialized for window ${windowId}, tab ${tabId}`)
-
-    // Connect to background with tab-specific port name
-    const port = chrome.runtime.connect({ name: `sidepanel-${windowId}-${tabId}` })
-    mainPortRef.current = port
-    console.log(`Connected to background via sidepanel-${windowId}-${tabId}`)
-
-    // Handle messages from background (tab-specific)
-    port.onMessage.addListener((message) => {
-      handlePortMessage(message, windowId)
-    })
-
-    port.onDisconnect.addListener(() => {
-      console.log('Main port disconnected')
-      mainPortRef.current = null
-    })
-
-    // Load history via port
-    port.postMessage({ type: 'GET_TRANSLATION_HISTORY' })
+    initializeConnection()
 
     return () => {
       mainPortRef.current?.disconnect()
