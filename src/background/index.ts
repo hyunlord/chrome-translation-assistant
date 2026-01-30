@@ -463,11 +463,16 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       handleTranslation(message.payload, sendResponse, sender.tab?.windowId, sender.tab?.id)
       return true // Keep channel open for async response
 
-    case 'OPEN_SIDE_PANEL':
-      if (sender.tab?.windowId && sender.tab?.id) {
-        handleOpenSidePanel(sender.tab.windowId, sender.tab.id)
+    case 'OPEN_SIDE_PANEL': {
+      // content script에서 보낸 경우 sender.tab 사용
+      // popup에서 보낸 경우 payload 사용 (popup은 탭이 아니므로 sender.tab이 undefined)
+      const openWindowId = sender.tab?.windowId ?? message.payload?.windowId
+      const openTabId = sender.tab?.id ?? message.payload?.tabId
+      if (openWindowId && openTabId) {
+        handleOpenSidePanel(openWindowId, openTabId)
       }
       break
+    }
 
     case 'UPDATE_API_KEY':
       handleUpdateApiKey(message.payload, sendResponse)
