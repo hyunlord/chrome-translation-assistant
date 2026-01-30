@@ -1,13 +1,87 @@
 // Text Selection Handler
 import { showTooltip, hideTooltip } from './uiInjector'
 
+/**
+ * Text position information for navigation back to source
+ */
+export interface TextPosition {
+  xpath: string
+  textOffset: number
+  textLength: number
+  scrollY: number
+  boundingRect?: {
+    top: number
+    left: number
+    width: number
+    height: number
+  }
+}
+
 interface SelectionInfo {
   text: string
   boundingRect: DOMRect
+  position: TextPosition
   context: {
     url: string
     title: string
     surroundingText: string
+  }
+}
+
+/**
+ * Generate XPath for an element
+ */
+function getXPath(element: Element): string {
+  // If element has an ID, use it for a simple XPath
+  if (element.id) {
+    return `//*[@id="${element.id}"]`
+  }
+
+  const parts: string[] = []
+  let current: Element | null = element
+
+  while (current && current.nodeType === Node.ELEMENT_NODE) {
+    let index = 1
+    let sibling = current.previousElementSibling
+
+    while (sibling) {
+      if (sibling.tagName === current.tagName) {
+        index++
+      }
+      sibling = sibling.previousElementSibling
+    }
+
+    const tagName = current.tagName.toLowerCase()
+    parts.unshift(`${tagName}[${index}]`)
+    current = current.parentElement
+  }
+
+  return '/' + parts.join('/')
+}
+
+/**
+ * Get text position information from a Range
+ */
+function getTextPosition(range: Range): TextPosition {
+  const container = range.commonAncestorContainer
+  const element =
+    container.nodeType === Node.TEXT_NODE
+      ? container.parentElement
+      : (container as Element)
+
+  const rect = range.getBoundingClientRect()
+
+  return {
+    xpath: element ? getXPath(element) : '',
+    textOffset: range.startOffset,
+    textLength: range.toString().length,
+    scrollY: window.scrollY,
+    boundingRect: {
+      top: rect.top + window.scrollY,
+      left: rect.left + window.scrollX,
+      width: rect.width,
+      height: rect.height,
+    },
   }
 }
 
@@ -103,10 +177,12 @@ function processSelection(_event: MouseEvent) {
     return
   }
 
-  // Extract context
+  // Extract position and context
+  const position = getTextPosition(range)
   const selectionInfo: SelectionInfo = {
     text: selectedText,
     boundingRect,
+    position,
     context: {
       url: window.location.href,
       title: document.title,
@@ -168,6 +244,7 @@ function handleTooltipAction(action: 'translate' | 'explain', info: SelectionInf
         text: info.text,
         action,
         context: info.context,
+        position: info.position,
       },
     },
     (response) => {

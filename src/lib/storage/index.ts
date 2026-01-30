@@ -21,3 +21,8 @@ export {
   type UsageRecord,
   type ProviderUsage,
 } from './usageTracker'
+
+export {
+  SessionManager,
+  sessionManager,
+} from './sessionManager'

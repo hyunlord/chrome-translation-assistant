@@ -8,6 +8,22 @@ console.log('Translation Assistant: Background service worker loaded')
 
 // AI Provider Manager instance
 const providerManager = new AIProviderManager()
+
+// Window-specific port registry for side panel isolation
+const windowPorts: Map<number, chrome.runtime.Port> = new Map()
+
+// Send message to a specific window's side panel
+function sendToWindow(windowId: number, message: any) {
+  const port = windowPorts.get(windowId)
+  if (port) {
+    try {
+      port.postMessage(message)
+    } catch (error) {
+      console.error(`Failed to send message to window ${windowId}:`, error)
+      windowPorts.delete(windowId)
+    }
+  }
+}
 const translationCache = getTranslationCache()
 
 // Install event
@@ -74,8 +90,79 @@ async function initializeProviders() {
 // Initialize on startup
 initializeProviders()
 
-// Handle streaming chat connections
+// Handle messages from side panel through dedicated port
+async function handleSidePanelMessage(
+  message: any,
+  windowId: number,
+  port: chrome.runtime.Port
+) {
+  console.log(`Side panel message from window ${windowId}:`, message.type)
+
+  switch (message.type) {
+    case 'TRANSLATE_TEXT_STREAM':
+      try {
+        await handleTranslationStream({ ...message.payload, windowId }, port)
+      } catch (error) {
+        port.postMessage({
+          type: 'TRANSLATION_STREAM_ERROR',
+          error: error instanceof Error ? error.message : 'Translation failed',
+        })
+      }
+      break
+
+    case 'GET_TRANSLATION_HISTORY':
+      try {
+        const history = (await localStorage.get<any[]>('translationHistory')) || []
+        port.postMessage({ type: 'TRANSLATION_HISTORY_RESPONSE', success: true, history })
+      } catch (error) {
+        port.postMessage({ type: 'TRANSLATION_HISTORY_RESPONSE', success: false, error: 'Failed to get history' })
+      }
+      break
+
+    case 'GET_CHAT_HISTORY':
+      try {
+        const history = (await localStorage.get<any[]>('chatHistory')) || []
+        port.postMessage({ type: 'CHAT_HISTORY_RESPONSE', success: true, history })
+      } catch (error) {
+        port.postMessage({ type: 'CHAT_HISTORY_RESPONSE', success: false, error: 'Failed to get chat history' })
+      }
+      break
+
+    case 'SAVE_CHAT_HISTORY':
+      try {
+        const messages = message.payload.messages.slice(-100)
+        await localStorage.set('chatHistory', messages)
+        port.postMessage({ type: 'SAVE_CHAT_HISTORY_RESPONSE', success: true })
+      } catch (error) {
+        port.postMessage({ type: 'SAVE_CHAT_HISTORY_RESPONSE', success: false, error: 'Failed to save chat history' })
+      }
+      break
+
+    default:
+      console.warn(`Unknown side panel message type: ${message.type}`)
+  }
+}
+
+// Handle streaming chat connections and side panel registration
 chrome.runtime.onConnect.addListener((port) => {
+  // Side panel registration for window isolation
+  if (port.name.startsWith('sidepanel-')) {
+    const windowId = parseInt(port.name.split('-')[1], 10)
+    if (!isNaN(windowId)) {
+      console.log(`Side panel registered for window ${windowId}`)
+      windowPorts.set(windowId, port)
+
+      port.onDisconnect.addListener(() => {
+        console.log(`Side panel disconnected for window ${windowId}`)
+        windowPorts.delete(windowId)
+      })
+
+      port.onMessage.addListener(async (message) => {
+        await handleSidePanelMessage(message, windowId, port)
+      })
+    }
+  }
+
   if (port.name === 'chat-stream') {
     port.onMessage.addListener(async (message) => {
       if (message.type === 'SEND_CHAT_MESSAGE_STREAM') {
@@ -235,14 +322,17 @@ async function handleTranslation(
       cached: false,
     })
 
-    // Notify side panel (ignore errors if panel is not open)
-    chrome.runtime.sendMessage({
-      type: 'TRANSLATION_COMPLETE',
-      payload: {
-        ...result,
-        windowId,  // Include windowId for window-specific filtering
-      },
-    }).catch(() => { /* Side panel not open, ignore */ })
+    // Notify side panel via dedicated port (window-specific)
+    if (windowId) {
+      sendToWindow(windowId, {
+        type: 'TRANSLATION_COMPLETE',
+        payload: {
+          ...result,
+          sourceText: text,
+          windowId,
+        },
+      })
+    }
   } catch (error) {
     console.error('Translation error:', error)
     const errorMessage = error instanceof Error ? error.message : 'Translation failed'
@@ -252,16 +342,18 @@ async function handleTranslation(
       error: errorMessage,
     })
 
-    // Notify side panel of error
-    chrome.runtime.sendMessage({
-      type: 'TRANSLATION_ERROR',
-      payload: {
-        error: errorMessage,
-        errorCode: categorizeError(error),
-        sourceText: payload.text,
-        windowId,
-      },
-    }).catch(() => { /* Side panel not open, ignore */ })
+    // Notify side panel of error via dedicated port
+    if (windowId) {
+      sendToWindow(windowId, {
+        type: 'TRANSLATION_ERROR',
+        payload: {
+          error: errorMessage,
+          errorCode: categorizeError(error),
+          sourceText: payload.text,
+          windowId,
+        },
+      })
+    }
   }
 }
 
@@ -704,26 +796,38 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
   if (info.menuItemId === 'translate-selection' && info.selectionText) {
     console.log('Context menu translation:', info.selectionText)
 
+    const windowId = tab?.windowId
+    if (!windowId) return
+
     // Open side panel IMMEDIATELY (must be in user gesture context)
-    if (tab?.windowId) {
-      handleOpenSidePanel(tab.windowId)
+    handleOpenSidePanel(windowId)
+
+    // Wait for side panel port connection, then send message directly
+    const checkAndSend = (attempts = 0) => {
+      const port = windowPorts.get(windowId)
+      if (port) {
+        // Send directly to this window's side panel via port
+        port.postMessage({
+          type: 'TRANSLATE_TEXT_STREAM_REQUEST',
+          payload: {
+            text: info.selectionText,
+            windowId,
+            context: {
+              url: tab?.url,
+              title: tab?.title,
+            },
+          },
+        })
+      } else if (attempts < 20) {
+        // Retry up to 20 times (2 seconds total)
+        setTimeout(() => checkAndSend(attempts + 1), 100)
+      } else {
+        console.warn(`Side panel port not available for window ${windowId} after 2s`)
+      }
     }
 
-    // Send message to trigger streaming translation in side panel
-    // Small delay to ensure side panel is ready
-    setTimeout(() => {
-      chrome.runtime.sendMessage({
-        type: 'TRANSLATE_TEXT_STREAM_REQUEST',
-        payload: {
-          text: info.selectionText,
-          windowId: tab?.windowId,
-          context: {
-            url: tab?.url,
-            title: tab?.title,
-          },
-        },
-      }).catch(() => { /* Side panel not ready yet, ignore */ })
-    }, 100)
+    // Start checking after a small delay for panel to initialize
+    setTimeout(() => checkAndSend(), 100)
   }
 })
 

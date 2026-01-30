@@ -91,9 +91,23 @@ function handlePDFSelection(_event: MouseEvent) {
     const pageNumber = getPDFPageNumber()
     console.log('PDF page number:', pageNumber)
 
+    // PDF position tracking (simplified - uses scroll position and page number)
+    const rect = boundingRect
     const selectionInfo = {
       text: selectedText,
       boundingRect,
+      position: {
+        xpath: '', // PDF elements don't have stable XPaths
+        textOffset: 0,
+        textLength: selectedText.length,
+        scrollY: window.scrollY,
+        boundingRect: {
+          top: rect.top + window.scrollY,
+          left: rect.left + window.scrollX,
+          width: rect.width,
+          height: rect.height,
+        },
+      },
       context: {
         url: window.location.href,
         title: document.title || 'PDF Document',

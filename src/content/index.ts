@@ -1,8 +1,12 @@
 // Content Script - Main
 import { initializeTextSelection } from './textSelection'
 import { AutoParagraphManager } from './autoParagraphManager'
+import { checkPendingNavigation, navigateToPosition } from './positionNavigator'
 
 console.log('Translation Assistant: Content script loaded')
+
+// Check for pending position navigation (from history click)
+checkPendingNavigation()
 
 // Auto paragraph manager instance
 let autoParagraphManager: AutoParagraphManager | null = null
@@ -88,6 +92,14 @@ chrome.runtime.onMessage.addListener((message, _sender, _sendResponse) => {
       if (autoParagraphManager) {
         console.log('Toggling all paragraph views')
         autoParagraphManager.toggleAll()
+      }
+      break
+
+    case 'NAVIGATE_TO_POSITION':
+      // Navigate to a specific position in the document
+      if (message.payload?.position) {
+        console.log('Navigating to position:', message.payload.position)
+        navigateToPosition(message.payload.position)
       }
       break
 

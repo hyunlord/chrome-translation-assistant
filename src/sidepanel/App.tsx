@@ -66,19 +66,99 @@ function App() {
     }))
   }
 
-  // Get current window ID on mount
-  useEffect(() => {
-    chrome.windows.getCurrent().then((window) => {
-      setMyWindowId(window.id ?? null)
-      console.log('Side panel initialized for window:', window.id)
-    })
-  }, [])
-
+  // Main port for window-specific communication with background
+  const mainPortRef = useRef<chrome.runtime.Port | null>(null)
   // Translation stream port reference
   const translationPortRef = useRef<chrome.runtime.Port | null>(null)
 
-  // Start streaming translation (memoized to avoid recreating on each render)
-  const startStreamingTranslation = useCallback((text: string, windowId: number) => {
+  // Connect to background via dedicated port for this window
+  useEffect(() => {
+    chrome.windows.getCurrent().then((window) => {
+      const windowId = window.id ?? null
+      setMyWindowId(windowId)
+      console.log('Side panel initialized for window:', windowId)
+
+      if (windowId === null) return
+
+      // Connect to background with window-specific port name
+      const port = chrome.runtime.connect({ name: `sidepanel-${windowId}` })
+      mainPortRef.current = port
+      console.log(`Connected to background via sidepanel-${windowId}`)
+
+      // Handle messages from background (window-specific)
+      port.onMessage.addListener((message) => {
+        handlePortMessage(message, windowId)
+      })
+
+      port.onDisconnect.addListener(() => {
+        console.log('Main port disconnected')
+        mainPortRef.current = null
+      })
+
+      // Load history via port
+      port.postMessage({ type: 'GET_TRANSLATION_HISTORY' })
+    })
+
+    return () => {
+      mainPortRef.current?.disconnect()
+    }
+  }, [])
+
+  // Handle messages from the main port (background script)
+  const handlePortMessage = useCallback((message: any, windowId: number) => {
+    console.log('Port message received:', message.type)
+
+    switch (message.type) {
+      case 'TRANSLATION_HISTORY_RESPONSE':
+        if (message.success) {
+          setHistory(message.history || [])
+        }
+        break
+
+      case 'TRANSLATION_COMPLETE':
+        const completeTranslation: Translation = {
+          id: crypto.randomUUID(),
+          sourceText: message.payload?.sourceText || '',
+          translatedText: message.payload?.translatedText,
+          sourceLang: message.payload?.sourceLang,
+          targetLang: message.payload?.targetLang,
+          provider: message.payload?.provider,
+          context: message.payload?.context,
+          timestamp: Date.now(),
+        }
+        updateWindowData(windowId, {
+          translation: completeTranslation,
+          error: null,
+          loading: false,
+        })
+        setActiveTab('translation')
+        break
+
+      case 'TRANSLATION_ERROR':
+        updateWindowData(windowId, {
+          error: {
+            message: message.payload?.error,
+            errorCode: message.payload?.errorCode || 'UNKNOWN',
+            sourceText: message.payload?.sourceText,
+          },
+          translation: null,
+          loading: false,
+        })
+        setActiveTab('translation')
+        break
+
+      case 'TRANSLATE_TEXT_STREAM_REQUEST':
+        console.log('Streaming translation request via port:', message.payload)
+        startStreamingTranslationInternal(message.payload.text, windowId)
+        break
+
+      default:
+        console.log('Unknown port message type:', message.type)
+    }
+  }, [])
+
+  // Internal streaming translation function (used by handlePortMessage)
+  const startStreamingTranslationInternal = (text: string, windowId: number) => {
     // Disconnect existing port if any
     if (translationPortRef.current) {
       translationPortRef.current.disconnect()
@@ -145,86 +225,11 @@ function App() {
     port.onDisconnect.addListener(() => {
       translationPortRef.current = null
     })
-  }, [])
-
-  // Listen for translation messages (filtered by windowId)
-  // Only set up listener after myWindowId is available to prevent race conditions
-  useEffect(() => {
-    // Don't set up listener until we know our window ID
-    if (myWindowId === null) return
-
-    const messageListener = (message: any) => {
-      const messageWindowId = message.payload?.windowId
-
-      // Only process messages for our window
-      if (messageWindowId !== myWindowId) return
-
-      if (message.type === 'TRANSLATION_COMPLETE') {
-        console.log('Translation received in side panel:', message.payload)
-
-        const translation: Translation = {
-          id: crypto.randomUUID(),
-          sourceText: message.payload.sourceText || '',
-          translatedText: message.payload.translatedText,
-          sourceLang: message.payload.sourceLang,
-          targetLang: message.payload.targetLang,
-          provider: message.payload.provider,
-          context: message.payload.context,
-          timestamp: Date.now(),
-        }
-
-        updateWindowData(myWindowId, {
-          translation,
-          error: null,
-          loading: false,
-        })
-        setActiveTab('translation')
-      }
-
-      if (message.type === 'TRANSLATION_ERROR') {
-        console.log('Translation error received in side panel:', message.payload)
-
-        updateWindowData(myWindowId, {
-          error: {
-            message: message.payload.error,
-            errorCode: message.payload.errorCode,
-            sourceText: message.payload.sourceText,
-          },
-          translation: null,
-          loading: false,
-        })
-        setActiveTab('translation')
-      }
-
-      // Handle streaming translation request from content script
-      if (message.type === 'TRANSLATE_TEXT_STREAM_REQUEST') {
-        console.log('Streaming translation request:', message.payload)
-        startStreamingTranslation(message.payload.text, myWindowId)
-      }
-    }
-
-    chrome.runtime.onMessage.addListener(messageListener)
-
-    return () => {
-      chrome.runtime.onMessage.removeListener(messageListener)
-    }
-  }, [myWindowId, startStreamingTranslation])
-
-  // Load history on mount
-  useEffect(() => {
-    loadHistory()
-  }, [])
-
-  const loadHistory = async () => {
-    try {
-      const response = await chrome.runtime.sendMessage({ type: 'GET_TRANSLATION_HISTORY' })
-      if (response.success) {
-        setHistory(response.history || [])
-      }
-    } catch (error) {
-      console.error('Error loading history:', error)
-    }
   }
+
+
+  // Note: Message handling is now done via dedicated port in handlePortMessage
+  // History is loaded when the port connects to background
 
   const handleAskQuestion = () => {
     // TODO: Switch to chat tab with current translation context
@@ -244,18 +249,8 @@ function App() {
   const handleRetry = () => {
     if (!error?.sourceText || myWindowId === null) return
 
-    updateWindowData(myWindowId, {
-      error: null,
-      loading: true,
-    })
-
-    chrome.runtime.sendMessage({
-      type: 'TRANSLATE_TEXT',
-      payload: {
-        text: error.sourceText,
-        action: 'translate',
-      },
-    })
+    // Use streaming translation for retry via port
+    startStreamingTranslationInternal(error.sourceText, myWindowId)
   }
 
   const handleOpenSettings = () => {
