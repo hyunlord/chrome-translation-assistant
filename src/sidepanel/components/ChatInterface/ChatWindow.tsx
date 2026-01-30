@@ -26,6 +26,7 @@ export function ChatWindow({ translationContext }: ChatWindowProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const scrollContainerRef = useRef<HTMLDivElement>(null)
   const shouldAutoScroll = useRef(true)
+  const userScrolledDuringStream = useRef(false) // Track if user scrolled away during streaming
 
   // Check if user is near bottom of scroll container
   const isNearBottom = () => {
@@ -42,14 +43,25 @@ export function ChatWindow({ translationContext }: ChatWindowProps) {
 
   // Track scroll position to determine if we should auto-scroll
   const handleScroll = () => {
-    shouldAutoScroll.current = isNearBottom()
+    const nearBottom = isNearBottom()
+    shouldAutoScroll.current = nearBottom
+
+    // Track if user scrolled away during streaming
+    if (streaming && !nearBottom) {
+      userScrolledDuringStream.current = true
+    }
   }
 
   useEffect(() => {
+    // Don't auto-scroll if user scrolled away during streaming
+    if (streaming && userScrolledDuringStream.current) {
+      return
+    }
+
     if (shouldAutoScroll.current) {
       scrollToBottom()
     }
-  }, [messages])
+  }, [messages, streaming])
 
   // Load chat history on mount
   useEffect(() => {
@@ -109,6 +121,7 @@ export function ChatWindow({ translationContext }: ChatWindowProps) {
 
     // Enable auto-scroll when user sends a message
     shouldAutoScroll.current = true
+    userScrolledDuringStream.current = false // Reset scroll tracking for new message
 
     const userMessage: ChatMessage = {
       id: crypto.randomUUID(),
@@ -176,6 +189,7 @@ export function ChatWindow({ translationContext }: ChatWindowProps) {
           )
         } else if (message.type === 'CHAT_STREAM_DONE') {
           setStreaming(false)
+          userScrolledDuringStream.current = false // Reset for next stream
           port.disconnect()
         } else if (message.type === 'CHAT_STREAM_ERROR') {
           throw new Error(message.error)

@@ -65,12 +65,23 @@ function Options() {
     usage?: number
   } | null>(null)
   const [loadingBalance, setLoadingBalance] = useState(false)
+  const [firebaseConfigured, setFirebaseConfigured] = useState<boolean | null>(null)
 
   // Load settings on mount
   useEffect(() => {
     loadSettings()
+    checkFirebaseConfig()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  const checkFirebaseConfig = async () => {
+    try {
+      const { isFirebaseConfigured } = await import('../lib/firebase')
+      setFirebaseConfigured(isFirebaseConfigured())
+    } catch {
+      setFirebaseConfigured(false)
+    }
+  }
 
   // Update current API key when provider changes
   useEffect(() => {
@@ -155,6 +166,11 @@ function Options() {
       }
 
       showMessage('success', 'Settings saved successfully!')
+
+      // Close the options window after a brief delay to show success message
+      setTimeout(() => {
+        window.close()
+      }, 500)
     } catch (error) {
       console.error('Error saving settings:', error)
       showMessage('error', 'Failed to save settings')
@@ -809,9 +825,21 @@ function Options() {
               Cloud Sync (Beta)
             </h2>
             <div className="space-y-4">
-              <p className="text-sm text-gray-600 dark:text-gray-400">
-                Sync your translation history across devices using Google account.
-              </p>
+              {firebaseConfigured === false ? (
+                <div className="p-4 bg-yellow-50 dark:bg-yellow-900/20 rounded-lg border border-yellow-200 dark:border-yellow-800">
+                  <p className="text-sm text-yellow-800 dark:text-yellow-200">
+                    Cloud sync requires Firebase configuration. See README for setup instructions.
+                  </p>
+                </div>
+              ) : firebaseConfigured === null ? (
+                <p className="text-sm text-gray-500 dark:text-gray-400">
+                  Checking configuration...
+                </p>
+              ) : (
+                <>
+                  <p className="text-sm text-gray-600 dark:text-gray-400">
+                    Sync your translation history across devices using Google account.
+                  </p>
 
               {!syncStatus.isSignedIn ? (
                 <div>
@@ -876,6 +904,8 @@ function Options() {
                     Note: Firebase configuration required. See README for setup instructions.
                   </p>
                 </div>
+              )}
+                </>
               )}
             </div>
           </div>

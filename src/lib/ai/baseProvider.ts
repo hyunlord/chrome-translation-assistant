@@ -107,6 +107,17 @@ export abstract class BaseAIProvider {
   }
 
   /**
+   * Stream translation response (optional, not all providers may support)
+   */
+  async *translateStream(
+    request: TranslationRequest
+  ): AsyncGenerator<{ text: string; done: boolean }, void, unknown> {
+    // Default implementation: fall back to non-streaming
+    const response = await this.translate(request)
+    yield { text: response.translatedText, done: true }
+  }
+
+  /**
    * Detect language of given text
    */
   async detectLanguage(text: string): Promise<string> {

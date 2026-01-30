@@ -209,6 +209,84 @@ export class ClaudeProvider extends BaseAIProvider {
     }
   }
 
+  async *translateStream(
+    request: import('./baseProvider').TranslationRequest
+  ): AsyncGenerator<{ text: string; done: boolean }, void, unknown> {
+    try {
+      const sourceLang = request.sourceLang || 'auto'
+
+      const systemPrompt = `You are a professional translator. Translate accurately while preserving the original meaning, tone, and style. Provide ONLY the translation without any explanations.`
+
+      const userPrompt = this.buildTranslationPrompt({
+        ...request,
+        sourceLang,
+      })
+
+      const claudeRequest = {
+        model: this.config.model || this.defaultModel,
+        messages: [{ role: 'user', content: userPrompt }],
+        max_tokens: this.config.maxTokens || 4096,
+        temperature: this.config.temperature,
+        system: systemPrompt,
+        stream: true,
+      }
+
+      const response = await fetch(this.apiEndpoint, {
+        method: 'POST',
+        headers: this.getHeaders(),
+        body: JSON.stringify(claudeRequest),
+      })
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`)
+      }
+
+      const reader = response.body?.getReader()
+      if (!reader) {
+        throw new Error('Response body is not readable')
+      }
+
+      const decoder = new TextDecoder()
+
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) {
+          yield { text: '', done: true }
+          break
+        }
+
+        const chunk = decoder.decode(value, { stream: true })
+        const lines = chunk.split('\n').filter((line) => line.trim())
+
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            const data = line.slice(6)
+
+            if (data === '[DONE]') {
+              continue
+            }
+
+            try {
+              const parsed = JSON.parse(data)
+
+              if (parsed.type === 'content_block_delta') {
+                const text = parsed.delta?.text
+                if (text) {
+                  yield { text, done: false }
+                }
+              }
+            } catch {
+              continue
+            }
+          }
+        }
+      }
+    } catch (error) {
+      console.error('Claude translation streaming error:', error)
+      throw error
+    }
+  }
+
   async validateApiKey(): Promise<ValidationResult> {
     try {
       const testRequest: ClaudeRequest = {

@@ -91,6 +91,22 @@ chrome.runtime.onConnect.addListener((port) => {
       }
     })
   }
+
+  if (port.name === 'translation-stream') {
+    port.onMessage.addListener(async (message) => {
+      if (message.type === 'TRANSLATE_TEXT_STREAM') {
+        try {
+          await handleTranslationStream(message.payload, port)
+        } catch (error) {
+          port.postMessage({
+            type: 'TRANSLATION_STREAM_ERROR',
+            error: error instanceof Error ? error.message : 'Translation failed',
+          })
+          port.disconnect()
+        }
+      }
+    })
+  }
 })
 
 // Listen for messages from content scripts and UI
@@ -331,11 +347,11 @@ async function handleSaveChatHistory(
 
 // Update API key
 async function handleUpdateApiKey(
-  payload: { provider: string; apiKey: string },
+  payload: { provider: string; apiKey: string; model?: string },
   sendResponse: (response: any) => void
 ) {
   try {
-    const { provider, apiKey } = payload
+    const { provider, apiKey, model } = payload
 
     // Get existing API keys
     const apiKeys = (await localStorage.get<Record<string, string>>('apiKeys')) || {}
@@ -345,8 +361,16 @@ async function handleUpdateApiKey(
 
     await localStorage.set('apiKeys', apiKeys)
 
-    // Re-register provider
-    providerManager.registerProvider(provider as any, { apiKey })
+    // Re-register provider with model if provided
+    providerManager.registerProvider(provider as any, { apiKey, model })
+
+    // Update settings if model is provided (for OpenRouter)
+    if (model) {
+      const settings = (await localStorage.get<any>('settings')) || {}
+      settings.defaultProvider = provider
+      settings.openrouterModel = model
+      await localStorage.set('settings', settings)
+    }
 
     sendResponse({ success: true })
   } catch (error) {
@@ -434,6 +458,95 @@ async function handleChatMessageStream(
     port.postMessage({
       type: 'CHAT_STREAM_ERROR',
       error: error instanceof Error ? error.message : 'Chat streaming failed',
+    })
+  }
+}
+
+// Handle streaming translation
+async function handleTranslationStream(
+  payload: { text: string; windowId?: number },
+  port: chrome.runtime.Port
+) {
+  console.log('Streaming translation requested:', payload)
+
+  try {
+    const { text, windowId } = payload
+
+    // Get settings
+    const settings = await localStorage.get<any>('settings')
+    const targetLang = settings?.defaultTargetLang || 'ko'
+    const providerType = settings?.defaultProvider || 'claude'
+
+    // Check cache first
+    const cachedTranslation = translationCache.get(text, targetLang, providerType)
+    if (cachedTranslation) {
+      console.log('Translation found in cache')
+      port.postMessage({
+        type: 'TRANSLATION_STREAM_CHUNK',
+        chunk: cachedTranslation,
+      })
+      port.postMessage({
+        type: 'TRANSLATION_STREAM_DONE',
+        windowId,
+        fullText: cachedTranslation,
+        sourceLang: 'auto',
+        targetLang,
+        provider: providerType,
+        cached: true,
+      })
+      return
+    }
+
+    // Get provider
+    const provider = providerManager.getProvider(providerType as any)
+
+    // Stream translation
+    const stream = provider.translateStream({
+      text,
+      targetLang,
+    })
+
+    let fullText = ''
+
+    for await (const chunk of stream) {
+      if (chunk.text) {
+        fullText += chunk.text
+        port.postMessage({
+          type: 'TRANSLATION_STREAM_CHUNK',
+          chunk: chunk.text,
+        })
+      }
+
+      if (chunk.done) {
+        // Cache result
+        translationCache.set(text, fullText, 'auto', targetLang, providerType)
+
+        // Save to history
+        await saveTranslationToHistory({
+          sourceText: text,
+          translatedText: fullText,
+          sourceLang: 'auto',
+          targetLang,
+          provider: providerType,
+          timestamp: Date.now(),
+        })
+
+        port.postMessage({
+          type: 'TRANSLATION_STREAM_DONE',
+          windowId,
+          fullText,
+          sourceLang: 'auto',
+          targetLang,
+          provider: providerType,
+          cached: false,
+        })
+      }
+    }
+  } catch (error) {
+    console.error('Streaming translation error:', error)
+    port.postMessage({
+      type: 'TRANSLATION_STREAM_ERROR',
+      error: error instanceof Error ? error.message : 'Translation streaming failed',
     })
   }
 }
@@ -596,21 +709,21 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
       handleOpenSidePanel(tab.windowId)
     }
 
-    // Trigger translation (async, side panel already open)
-    handleTranslation(
-      {
-        text: info.selectionText,
-        action: 'translate',
-        context: {
-          url: tab?.url,
-          title: tab?.title,
+    // Send message to trigger streaming translation in side panel
+    // Small delay to ensure side panel is ready
+    setTimeout(() => {
+      chrome.runtime.sendMessage({
+        type: 'TRANSLATE_TEXT_STREAM_REQUEST',
+        payload: {
+          text: info.selectionText,
+          windowId: tab?.windowId,
+          context: {
+            url: tab?.url,
+            title: tab?.title,
+          },
         },
-      },
-      (response) => {
-        console.log('Context menu translation response:', response)
-      },
-      tab?.windowId  // Pass windowId for window-specific side panel
-    )
+      }).catch(() => { /* Side panel not ready yet, ignore */ })
+    }, 100)
   }
 })
 

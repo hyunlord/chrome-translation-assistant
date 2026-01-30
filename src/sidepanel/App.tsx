@@ -1,7 +1,8 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { TranslationCard } from './components/TranslationView/TranslationCard'
 import { TranslationError } from './components/TranslationView/TranslationError'
 import { ChatWindow } from './components/ChatInterface/ChatWindow'
+import { ModelSelector } from './components/ModelSelector'
 
 interface Translation {
   id: string
@@ -28,6 +29,9 @@ interface WindowData {
   translation: Translation | null
   error: ErrorState | null
   loading: boolean
+  streamingText: string
+  isStreaming: boolean
+  streamingSourceText: string
 }
 
 function App() {
@@ -42,6 +46,9 @@ function App() {
   const currentTranslation = currentWindowData?.translation ?? null
   const error = currentWindowData?.error ?? null
   const loading = currentWindowData?.loading ?? false
+  const streamingText = currentWindowData?.streamingText ?? ''
+  const isStreaming = currentWindowData?.isStreaming ?? false
+  const streamingSourceText = currentWindowData?.streamingSourceText ?? ''
 
   // Helper to update current window's data
   const updateWindowData = (windowId: number, updates: Partial<WindowData>) => {
@@ -51,6 +58,9 @@ function App() {
         translation: prev[windowId]?.translation ?? null,
         error: prev[windowId]?.error ?? null,
         loading: prev[windowId]?.loading ?? false,
+        streamingText: prev[windowId]?.streamingText ?? '',
+        isStreaming: prev[windowId]?.isStreaming ?? false,
+        streamingSourceText: prev[windowId]?.streamingSourceText ?? '',
         ...updates,
       },
     }))
@@ -64,61 +74,62 @@ function App() {
     })
   }, [])
 
+  // Translation stream port reference
+  const translationPortRef = useRef<chrome.runtime.Port | null>(null)
+
   // Listen for translation messages (filtered by windowId)
+  // Only set up listener after myWindowId is available to prevent race conditions
   useEffect(() => {
+    // Don't set up listener until we know our window ID
+    if (myWindowId === null) return
+
     const messageListener = (message: any) => {
-      // Get the windowId from the message
       const messageWindowId = message.payload?.windowId
+
+      // Only process messages for our window
+      if (messageWindowId !== myWindowId) return
 
       if (message.type === 'TRANSLATION_COMPLETE') {
         console.log('Translation received in side panel:', message.payload)
 
-        // Only update state for the specific window
-        if (messageWindowId !== undefined) {
-          const translation: Translation = {
-            id: crypto.randomUUID(),
-            sourceText: message.payload.sourceText || '',
-            translatedText: message.payload.translatedText,
-            sourceLang: message.payload.sourceLang,
-            targetLang: message.payload.targetLang,
-            provider: message.payload.provider,
-            context: message.payload.context,
-            timestamp: Date.now(),
-          }
-
-          updateWindowData(messageWindowId, {
-            translation,
-            error: null,
-            loading: false,
-          })
-
-          // Switch to translation tab only if this is our window
-          if (messageWindowId === myWindowId) {
-            setActiveTab('translation')
-          }
+        const translation: Translation = {
+          id: crypto.randomUUID(),
+          sourceText: message.payload.sourceText || '',
+          translatedText: message.payload.translatedText,
+          sourceLang: message.payload.sourceLang,
+          targetLang: message.payload.targetLang,
+          provider: message.payload.provider,
+          context: message.payload.context,
+          timestamp: Date.now(),
         }
+
+        updateWindowData(myWindowId, {
+          translation,
+          error: null,
+          loading: false,
+        })
+        setActiveTab('translation')
       }
 
       if (message.type === 'TRANSLATION_ERROR') {
         console.log('Translation error received in side panel:', message.payload)
 
-        // Only update state for the specific window
-        if (messageWindowId !== undefined) {
-          updateWindowData(messageWindowId, {
-            error: {
-              message: message.payload.error,
-              errorCode: message.payload.errorCode,
-              sourceText: message.payload.sourceText,
-            },
-            translation: null,
-            loading: false,
-          })
+        updateWindowData(myWindowId, {
+          error: {
+            message: message.payload.error,
+            errorCode: message.payload.errorCode,
+            sourceText: message.payload.sourceText,
+          },
+          translation: null,
+          loading: false,
+        })
+        setActiveTab('translation')
+      }
 
-          // Switch to translation tab only if this is our window
-          if (messageWindowId === myWindowId) {
-            setActiveTab('translation')
-          }
-        }
+      // Handle streaming translation request from content script
+      if (message.type === 'TRANSLATE_TEXT_STREAM_REQUEST') {
+        console.log('Streaming translation request:', message.payload)
+        startStreamingTranslation(message.payload.text, myWindowId)
       }
     }
 
@@ -128,6 +139,76 @@ function App() {
       chrome.runtime.onMessage.removeListener(messageListener)
     }
   }, [myWindowId])
+
+  // Start streaming translation
+  const startStreamingTranslation = (text: string, windowId: number) => {
+    // Disconnect existing port if any
+    if (translationPortRef.current) {
+      translationPortRef.current.disconnect()
+    }
+
+    updateWindowData(windowId, {
+      isStreaming: true,
+      streamingText: '',
+      streamingSourceText: text,
+      error: null,
+      loading: false,
+    })
+    setActiveTab('translation')
+
+    const port = chrome.runtime.connect({ name: 'translation-stream' })
+    translationPortRef.current = port
+
+    port.postMessage({
+      type: 'TRANSLATE_TEXT_STREAM',
+      payload: { text, windowId },
+    })
+
+    let fullText = ''
+
+    port.onMessage.addListener((message) => {
+      if (message.type === 'TRANSLATION_STREAM_CHUNK') {
+        fullText += message.chunk
+        updateWindowData(windowId, {
+          streamingText: fullText,
+        })
+      } else if (message.type === 'TRANSLATION_STREAM_DONE') {
+        const translation: Translation = {
+          id: crypto.randomUUID(),
+          sourceText: text,
+          translatedText: message.fullText,
+          sourceLang: message.sourceLang,
+          targetLang: message.targetLang,
+          provider: message.provider,
+          timestamp: Date.now(),
+        }
+
+        updateWindowData(windowId, {
+          translation,
+          isStreaming: false,
+          streamingText: '',
+          streamingSourceText: '',
+        })
+        port.disconnect()
+      } else if (message.type === 'TRANSLATION_STREAM_ERROR') {
+        updateWindowData(windowId, {
+          error: {
+            message: message.error,
+            errorCode: 'UNKNOWN',
+            sourceText: text,
+          },
+          isStreaming: false,
+          streamingText: '',
+          streamingSourceText: '',
+        })
+        port.disconnect()
+      }
+    })
+
+    port.onDisconnect.addListener(() => {
+      translationPortRef.current = null
+    })
+  }
 
   // Load history on mount
   useEffect(() => {
@@ -185,9 +266,12 @@ function App() {
     <div className="h-screen flex flex-col bg-gray-50 dark:bg-gray-900">
       {/* Header */}
       <header className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 p-4">
-        <h1 className="text-xl font-bold text-gray-900 dark:text-white">
-          Translation Assistant
-        </h1>
+        <div className="flex items-center justify-between">
+          <h1 className="text-xl font-bold text-gray-900 dark:text-white">
+            Translation Assistant
+          </h1>
+          <ModelSelector />
+        </div>
       </header>
 
       {/* Tabs */}
@@ -244,7 +328,40 @@ function App() {
               </div>
             )}
 
-            {!loading && error && (
+            {isStreaming && (
+              <div className="card p-4">
+                {/* Source text */}
+                <div className="mb-4">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">
+                      Original
+                    </span>
+                  </div>
+                  <p className="text-gray-900 dark:text-white whitespace-pre-wrap">
+                    {streamingSourceText}
+                  </p>
+                </div>
+
+                {/* Streaming translation */}
+                <div className="border-t border-gray-200 dark:border-gray-700 pt-4">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">
+                      Translation
+                    </span>
+                    <span className="flex items-center text-xs text-primary-600">
+                      <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-primary-600 mr-2"></div>
+                      Translating...
+                    </span>
+                  </div>
+                  <p className="text-gray-900 dark:text-white whitespace-pre-wrap">
+                    {streamingText}
+                    <span className="animate-pulse text-primary-600">|</span>
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {!loading && !isStreaming && error && (
               <TranslationError
                 error={error.message}
                 errorCode={error.errorCode}
@@ -254,7 +371,7 @@ function App() {
               />
             )}
 
-            {!loading && !error && currentTranslation && (
+            {!loading && !isStreaming && !error && currentTranslation && (
               <TranslationCard
                 sourceText={currentTranslation.sourceText}
                 translatedText={currentTranslation.translatedText}
@@ -267,7 +384,7 @@ function App() {
               />
             )}
 
-            {!loading && !error && !currentTranslation && (
+            {!loading && !isStreaming && !error && !currentTranslation && (
               <div className="card">
                 <div className="text-center py-8">
                   <svg
