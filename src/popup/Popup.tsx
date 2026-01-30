@@ -10,8 +10,8 @@ function Popup() {
           path: `sidepanel.html?windowId=${tab.windowId}&tabId=${tab.id}`,
           enabled: true
         })
-        // 2. Open side panel for this specific tab
-        await chrome.sidePanel.open({ tabId: tab.id })
+        // 2. Open side panel using windowId (setOptions already configured tab-specific path)
+        await chrome.sidePanel.open({ windowId: tab.windowId })
       }
     } catch (error) {
       console.error('Failed to open side panel:', error)

@@ -814,8 +814,8 @@ async function handleOpenSidePanel(windowId: number, tabId: number) {
       enabled: true
     })
 
-    // 2. 해당 탭에서만 사이드 패널 열기
-    await chrome.sidePanel.open({ tabId })
+    // 2. 사이드 패널 열기 (setOptions로 이미 탭별 경로 설정됨)
+    await chrome.sidePanel.open({ windowId })
     console.log(`Side panel opened for window ${windowId}, tab ${tabId}`)
   } catch (error) {
     console.error('Failed to open side panel:', error)
