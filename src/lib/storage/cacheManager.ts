@@ -42,7 +42,10 @@ export class TranslationCache {
     // Create hash-like key
     const key = `${provider}:${targetLang}:${normalizedText.substring(0, 100)}`
 
-    return btoa(key) // Base64 encode for safety
+    // Unicode-safe Base64 encoding (btoa only supports Latin1)
+    const bytes = new TextEncoder().encode(key)
+    const binString = Array.from(bytes, (byte) => String.fromCodePoint(byte)).join('')
+    return btoa(binString)
   }
 
   /**
