@@ -474,6 +474,14 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       break
     }
 
+    case 'TRACK_PANEL_TAB':
+      // popup에서 직접 패널을 연 경우, tracking만 요청
+      if (message.payload?.tabId) {
+        panelEnabledTabs.add(message.payload.tabId)
+        console.log(`Panel tab tracked: ${message.payload.tabId}`)
+      }
+      break
+
     case 'UPDATE_API_KEY':
       handleUpdateApiKey(message.payload, sendResponse)
       return true

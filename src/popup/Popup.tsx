@@ -3,14 +3,20 @@ function Popup() {
     try {
       // Get current tab and open side panel for that specific tab
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true })
-      if (tab?.id && tab?.windowId) {
-        // background의 handleOpenSidePanel 사용 (setOptions + open + panelEnabledTabs 추적)
-        // popup에서 직접 sidePanel.open() 호출하면 setOptions 없이 열려서 탭 전환 시 문제 발생
+      if (tab?.id) {
+        // 1. Enable the panel for this tab (doesn't require user gesture)
+        await chrome.sidePanel.setOptions({ tabId: tab.id, enabled: true })
+
+        // 2. Open the panel (requires user gesture - we have it here in popup click)
+        await chrome.sidePanel.open({ tabId: tab.id })
+
+        // 3. Tell background to track this tab in panelEnabledTabs
         chrome.runtime.sendMessage({
-          type: 'OPEN_SIDE_PANEL',
-          payload: { windowId: tab.windowId, tabId: tab.id }
+          type: 'TRACK_PANEL_TAB',
+          payload: { tabId: tab.id }
         })
-        // popup 닫기
+
+        // 4. Close popup
         window.close()
       }
     } catch (error) {
