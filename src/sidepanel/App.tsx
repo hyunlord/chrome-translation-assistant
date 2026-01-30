@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { TranslationCard } from './components/TranslationView/TranslationCard'
 import { TranslationError } from './components/TranslationView/TranslationError'
-import { ChatWindow } from './components/ChatInterface/ChatWindow'
+import { ChatWindow, ChatMessage } from './components/ChatInterface/ChatWindow'
 import { ModelSelector } from './components/ModelSelector'
 
 interface Translation {
@@ -32,13 +32,17 @@ interface WindowData {
   streamingText: string
   isStreaming: boolean
   streamingSourceText: string
+  chatMessages: ChatMessage[]
 }
 
 function App() {
   const [activeTab, setActiveTab] = useState<'translation' | 'chat' | 'history'>('translation')
   const [history, setHistory] = useState<Translation[]>([])
   const [myWindowId, setMyWindowId] = useState<number | null>(null)
-  // Store data per window to prevent cross-window state sharing
+  const [myTabId, setMyTabId] = useState<number | null>(null)
+  // Note: myTabId is used for port connection naming and debugging
+  void myTabId
+  // Store data per tab to prevent cross-tab state sharing
   const [dataByWindow, setDataByWindow] = useState<Record<number, WindowData>>({})
 
   // Derived state for current window
@@ -61,10 +65,14 @@ function App() {
         streamingText: prev[windowId]?.streamingText ?? '',
         isStreaming: prev[windowId]?.isStreaming ?? false,
         streamingSourceText: prev[windowId]?.streamingSourceText ?? '',
+        chatMessages: prev[windowId]?.chatMessages ?? [],
         ...updates,
       },
     }))
   }
+
+  // Derived chat messages for current window
+  const chatMessages = currentWindowData?.chatMessages ?? []
 
   // Main port for window-specific communication with background
   const mainPortRef = useRef<chrome.runtime.Port | null>(null)
@@ -141,10 +149,36 @@ function App() {
     console.log('Port message received:', message.type)
 
     switch (message.type) {
+      case 'INIT_STATE':
+        // 연결 시 Background에서 보내는 초기 상태
+        console.log('Received initial state for window:', windowId)
+        if (message.payload) {
+          updateWindowData(windowId, {
+            translation: message.payload.currentTranslation || null,
+            chatMessages: message.payload.currentChat || [],
+          })
+        }
+        break
+
       case 'TRANSLATION_HISTORY_RESPONSE':
         if (message.success) {
           setHistory(message.history || [])
         }
+        break
+
+      case 'CHAT_HISTORY_RESPONSE':
+        // 윈도우별 채팅 히스토리
+        if (message.success) {
+          updateWindowData(windowId, {
+            chatMessages: message.history || [],
+          })
+        }
+        break
+
+      case 'CHAT_CLEARED':
+        updateWindowData(windowId, {
+          chatMessages: [],
+        })
         break
 
       case 'TRANSLATION_COMPLETE': {
@@ -190,33 +224,42 @@ function App() {
     }
   }, [startStreamingTranslationInternal])
 
-  // Connect to background via dedicated port for this window
+  // Connect to background via dedicated port for this tab
   useEffect(() => {
-    chrome.windows.getCurrent().then((window) => {
-      const windowId = window.id ?? null
-      setMyWindowId(windowId)
-      console.log('Side panel initialized for window:', windowId)
+    // URL에서 windowId와 tabId 파싱 (background에서 setOptions로 설정됨)
+    const params = new URLSearchParams(window.location.search)
+    const windowIdParam = params.get('windowId')
+    const tabIdParam = params.get('tabId')
 
-      if (windowId === null) return
+    const windowId = windowIdParam ? parseInt(windowIdParam, 10) : null
+    const tabId = tabIdParam ? parseInt(tabIdParam, 10) : null
 
-      // Connect to background with window-specific port name
-      const port = chrome.runtime.connect({ name: `sidepanel-${windowId}` })
-      mainPortRef.current = port
-      console.log(`Connected to background via sidepanel-${windowId}`)
+    if (!windowId || !tabId || isNaN(windowId) || isNaN(tabId)) {
+      console.error('Invalid windowId or tabId in URL:', window.location.search)
+      return
+    }
 
-      // Handle messages from background (window-specific)
-      port.onMessage.addListener((message) => {
-        handlePortMessage(message, windowId)
-      })
+    setMyWindowId(windowId)
+    setMyTabId(tabId)
+    console.log(`Side panel initialized for window ${windowId}, tab ${tabId}`)
 
-      port.onDisconnect.addListener(() => {
-        console.log('Main port disconnected')
-        mainPortRef.current = null
-      })
+    // Connect to background with tab-specific port name
+    const port = chrome.runtime.connect({ name: `sidepanel-${windowId}-${tabId}` })
+    mainPortRef.current = port
+    console.log(`Connected to background via sidepanel-${windowId}-${tabId}`)
 
-      // Load history via port
-      port.postMessage({ type: 'GET_TRANSLATION_HISTORY' })
+    // Handle messages from background (tab-specific)
+    port.onMessage.addListener((message) => {
+      handlePortMessage(message, windowId)
     })
+
+    port.onDisconnect.addListener(() => {
+      console.log('Main port disconnected')
+      mainPortRef.current = null
+    })
+
+    // Load history via port
+    port.postMessage({ type: 'GET_TRANSLATION_HISTORY' })
 
     return () => {
       mainPortRef.current?.disconnect()
@@ -251,6 +294,35 @@ function App() {
   const handleOpenSettings = () => {
     chrome.runtime.openOptionsPage()
   }
+
+  // 채팅 메시지 저장 (Port를 통해 Background에 전송)
+  const saveChatMessage = useCallback((message: ChatMessage) => {
+    if (myWindowId === null) return
+
+    // 로컬 상태 즉시 업데이트
+    updateWindowData(myWindowId, {
+      chatMessages: [...chatMessages, message],
+    })
+
+    // Background에 저장 요청 (Port 통해)
+    mainPortRef.current?.postMessage({
+      type: 'SAVE_CHAT_MESSAGE',
+      payload: { message },
+    })
+  }, [myWindowId, chatMessages])
+
+  // 채팅 초기화
+  const clearChat = useCallback(() => {
+    if (myWindowId === null) return
+
+    updateWindowData(myWindowId, {
+      chatMessages: [],
+    })
+
+    mainPortRef.current?.postMessage({
+      type: 'CLEAR_CHAT',
+    })
+  }, [myWindowId])
 
   return (
     <div className="h-screen flex flex-col bg-gray-50 dark:bg-gray-900">
@@ -405,6 +477,9 @@ function App() {
         {activeTab === 'chat' && (
           <div className="h-full flex flex-col">
             <ChatWindow
+              messages={chatMessages}
+              onSendMessage={saveChatMessage}
+              onClearChat={clearChat}
               translationContext={
                 currentTranslation
                   ? {

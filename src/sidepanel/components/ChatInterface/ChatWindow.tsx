@@ -1,7 +1,7 @@
-// Chat Window Component
+// Chat Window Component - Props-based for window isolation
 import React, { useState, useRef, useEffect } from 'react'
 
-interface ChatMessage {
+export interface ChatMessage {
   id: string
   role: 'user' | 'assistant'
   content: string
@@ -9,6 +9,9 @@ interface ChatMessage {
 }
 
 interface ChatWindowProps {
+  messages: ChatMessage[]
+  onSendMessage: (message: ChatMessage) => void
+  onClearChat?: () => void
   translationContext?: {
     sourceText: string
     translatedText: string
@@ -17,11 +20,19 @@ interface ChatWindowProps {
   }
 }
 
-export function ChatWindow({ translationContext }: ChatWindowProps) {
-  const [messages, setMessages] = useState<ChatMessage[]>([])
+export function ChatWindow({
+  messages,
+  onSendMessage,
+  onClearChat: _onClearChat,
+  translationContext,
+}: ChatWindowProps) {
+  // Note: onClearChat can be used for a "Clear Chat" button feature
+  void _onClearChat
   const [input, setInput] = useState('')
   const [sending, setSending] = useState(false)
   const [streaming, setStreaming] = useState(false)
+  const [streamingMessageId, setStreamingMessageId] = useState<string | null>(null)
+  const [streamingContent, setStreamingContent] = useState('')
   const [isComposing, setIsComposing] = useState(false) // IME composition state
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const scrollContainerRef = useRef<HTMLDivElement>(null)
@@ -61,48 +72,9 @@ export function ChatWindow({ translationContext }: ChatWindowProps) {
     if (shouldAutoScroll.current) {
       scrollToBottom()
     }
-  }, [messages, streaming])
+  }, [messages, streaming, streamingContent])
 
-  // Load chat history on mount
-  useEffect(() => {
-    loadChatHistory()
-  }, [])
-
-  // Save chat history when messages change (skip initial load)
-  const isInitialMount = useRef(true)
-  useEffect(() => {
-    if (isInitialMount.current) {
-      isInitialMount.current = false
-      return
-    }
-    if (messages.length > 0) {
-      saveChatHistory(messages)
-    }
-  }, [messages])
-
-  const loadChatHistory = async () => {
-    try {
-      const response = await chrome.runtime.sendMessage({ type: 'GET_CHAT_HISTORY' })
-      if (response.success && response.history?.length > 0) {
-        setMessages(response.history)
-      }
-    } catch (e) {
-      console.error('Failed to load chat history:', e)
-    }
-  }
-
-  const saveChatHistory = async (msgs: ChatMessage[]) => {
-    try {
-      await chrome.runtime.sendMessage({
-        type: 'SAVE_CHAT_HISTORY',
-        payload: { messages: msgs },
-      })
-    } catch (e) {
-      console.error('Failed to save chat history:', e)
-    }
-  }
-
-  // Add initial context message
+  // Add initial context message when translationContext is provided and no messages exist
   useEffect(() => {
     if (translationContext && messages.length === 0) {
       const contextMessage: ChatMessage = {
@@ -111,7 +83,7 @@ export function ChatWindow({ translationContext }: ChatWindowProps) {
         content: `I can help you understand this translation:\n\n**Original (${translationContext.sourceLang}):** ${translationContext.sourceText}\n\n**Translation (${translationContext.targetLang}):** ${translationContext.translatedText}\n\nFeel free to ask me anything about the grammar, vocabulary, cultural context, or meaning!`,
         timestamp: Date.now(),
       }
-      setMessages([contextMessage])
+      onSendMessage(contextMessage)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [translationContext])
@@ -130,19 +102,15 @@ export function ChatWindow({ translationContext }: ChatWindowProps) {
       timestamp: Date.now(),
     }
 
-    setMessages((prev) => [...prev, userMessage])
+    // Send user message to parent
+    onSendMessage(userMessage)
     setInput('')
     setSending(true)
 
     // Create placeholder for streaming message
-    const streamingMessageId = crypto.randomUUID()
-    const streamingMessage: ChatMessage = {
-      id: streamingMessageId,
-      role: 'assistant',
-      content: '',
-      timestamp: Date.now(),
-    }
-    setMessages((prev) => [...prev, streamingMessage])
+    const newStreamingMessageId = crypto.randomUUID()
+    setStreamingMessageId(newStreamingMessageId)
+    setStreamingContent('')
     setStreaming(true)
 
     try {
@@ -181,14 +149,20 @@ export function ChatWindow({ translationContext }: ChatWindowProps) {
       port.onMessage.addListener((message) => {
         if (message.type === 'CHAT_STREAM_CHUNK') {
           fullContent += message.chunk
-          // Update the streaming message
-          setMessages((prev) =>
-            prev.map((msg) =>
-              msg.id === streamingMessageId ? { ...msg, content: fullContent } : msg
-            )
-          )
+          setStreamingContent(fullContent)
         } else if (message.type === 'CHAT_STREAM_DONE') {
+          // Create final assistant message and send to parent
+          const assistantMessage: ChatMessage = {
+            id: newStreamingMessageId,
+            role: 'assistant',
+            content: fullContent,
+            timestamp: Date.now(),
+          }
+          onSendMessage(assistantMessage)
+
           setStreaming(false)
+          setStreamingMessageId(null)
+          setStreamingContent('')
           userScrolledDuringStream.current = false // Reset for next stream
           port.disconnect()
         } else if (message.type === 'CHAT_STREAM_ERROR') {
@@ -199,6 +173,7 @@ export function ChatWindow({ translationContext }: ChatWindowProps) {
       port.onDisconnect.addListener(() => {
         setStreaming(false)
         setSending(false)
+        setStreamingMessageId(null)
       })
     } catch (error) {
       console.error('Chat error:', error)
@@ -210,11 +185,11 @@ export function ChatWindow({ translationContext }: ChatWindowProps) {
         timestamp: Date.now(),
       }
 
-      // Remove the streaming placeholder and add error message
-      setMessages((prev) =>
-        prev.filter((msg) => msg.id !== streamingMessageId).concat(errorMessage)
-      )
+      // Send error message to parent
+      onSendMessage(errorMessage)
       setStreaming(false)
+      setStreamingMessageId(null)
+      setStreamingContent('')
     } finally {
       setSending(false)
     }
@@ -228,6 +203,19 @@ export function ChatWindow({ translationContext }: ChatWindowProps) {
     }
   }
 
+  // Combine messages with streaming content
+  const displayMessages = streaming && streamingMessageId
+    ? [
+        ...messages,
+        {
+          id: streamingMessageId,
+          role: 'assistant' as const,
+          content: streamingContent,
+          timestamp: Date.now(),
+        },
+      ]
+    : messages
+
   return (
     <div className="flex flex-col h-full">
       {/* Messages */}
@@ -236,7 +224,7 @@ export function ChatWindow({ translationContext }: ChatWindowProps) {
         onScroll={handleScroll}
         className="flex-1 overflow-y-auto p-4 space-y-4"
       >
-        {messages.length === 0 && (
+        {displayMessages.length === 0 && !streaming && (
           <div className="text-center py-8">
             <svg
               className="mx-auto h-12 w-12 text-gray-400"
@@ -260,7 +248,7 @@ export function ChatWindow({ translationContext }: ChatWindowProps) {
           </div>
         )}
 
-        {messages.map((message) => (
+        {displayMessages.map((message) => (
           <div
             key={message.id}
             className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
@@ -286,7 +274,7 @@ export function ChatWindow({ translationContext }: ChatWindowProps) {
           </div>
         ))}
 
-        {streaming && (
+        {streaming && streamingContent === '' && (
           <div className="flex justify-start">
             <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg px-4 py-2">
               <div className="flex space-x-2">

@@ -9,18 +9,88 @@ console.log('Translation Assistant: Background service worker loaded')
 // AI Provider Manager instance
 const providerManager = new AIProviderManager()
 
-// Window-specific port registry for side panel isolation
-const windowPorts: Map<number, chrome.runtime.Port> = new Map()
+// ============================================
+// 탭별 상태 관리 (엄격한 격리)
+// ============================================
 
-// Send message to a specific window's side panel
-function sendToWindow(windowId: number, message: any) {
-  const port = windowPorts.get(windowId)
+interface ChatMessage {
+  role: 'user' | 'assistant' | 'system'
+  content: string
+  timestamp: number
+}
+
+interface TabState {
+  windowId: number
+  tabId: number
+  currentTranslation: any | null
+  currentChat: ChatMessage[]
+  sourceUrl: string | null
+  sourceTitle: string | null
+}
+
+// 탭별 상태 (인메모리 - 저장소 아님!)
+const tabStates: Map<string, TabState> = new Map()
+
+// Tab-specific port registry for side panel isolation
+const tabPorts: Map<string, chrome.runtime.Port> = new Map()
+
+// 탭 상태 키 생성 (windowId-tabId)
+function getStateKey(windowId: number, tabId: number): string {
+  return `${windowId}-${tabId}`
+}
+
+// 탭 상태 초기화 또는 가져오기
+function getOrCreateTabState(windowId: number, tabId: number): TabState {
+  const key = getStateKey(windowId, tabId)
+  let state = tabStates.get(key)
+  if (!state) {
+    state = {
+      windowId,
+      tabId,
+      currentTranslation: null,
+      currentChat: [],
+      sourceUrl: null,
+      sourceTitle: null,
+    }
+    tabStates.set(key, state)
+    console.log(`Created new tab state for window ${windowId}, tab ${tabId}`)
+  }
+  return state
+}
+
+// 탭 상태 정리 (탭 닫힐 때)
+function cleanupTabState(windowId: number, tabId: number): void {
+  const key = getStateKey(windowId, tabId)
+  tabStates.delete(key)
+  tabPorts.delete(key)
+  console.log(`Cleaned up tab state for window ${windowId}, tab ${tabId}`)
+}
+
+// 윈도우의 모든 탭 상태 정리 (윈도우 닫힐 때)
+function cleanupWindowTabs(windowId: number): void {
+  const keysToDelete: string[] = []
+  for (const key of tabStates.keys()) {
+    if (key.startsWith(`${windowId}-`)) {
+      keysToDelete.push(key)
+    }
+  }
+  for (const key of keysToDelete) {
+    tabStates.delete(key)
+    tabPorts.delete(key)
+  }
+  console.log(`Cleaned up ${keysToDelete.length} tab states for window ${windowId}`)
+}
+
+// Send message to a specific tab's side panel
+function sendToTab(windowId: number, tabId: number, message: any) {
+  const key = getStateKey(windowId, tabId)
+  const port = tabPorts.get(key)
   if (port) {
     try {
       port.postMessage(message)
     } catch (error) {
-      console.error(`Failed to send message to window ${windowId}:`, error)
-      windowPorts.delete(windowId)
+      console.error(`Failed to send message to tab ${tabId}:`, error)
+      tabPorts.delete(key)
     }
   }
 }
@@ -90,13 +160,27 @@ async function initializeProviders() {
 // Initialize on startup
 initializeProviders()
 
+// 윈도우 닫힐 때 해당 윈도우의 모든 탭 상태 정리
+chrome.windows.onRemoved.addListener((windowId) => {
+  console.log(`Window ${windowId} closed, cleaning up all tab states`)
+  cleanupWindowTabs(windowId)
+})
+
+// 탭 닫힐 때 상태 정리
+chrome.tabs.onRemoved.addListener((tabId, removeInfo) => {
+  console.log(`Tab ${tabId} closed in window ${removeInfo.windowId}`)
+  cleanupTabState(removeInfo.windowId, tabId)
+})
+
 // Handle messages from side panel through dedicated port
 async function handleSidePanelMessage(
   message: any,
   windowId: number,
+  tabId: number,
   port: chrome.runtime.Port
 ) {
-  console.log(`Side panel message from window ${windowId}:`, message.type)
+  console.log(`Side panel message from window ${windowId}, tab ${tabId}:`, message.type)
+  const state = getOrCreateTabState(windowId, tabId)
 
   switch (message.type) {
     case 'TRANSLATE_TEXT_STREAM':
@@ -111,6 +195,7 @@ async function handleSidePanelMessage(
       break
 
     case 'GET_TRANSLATION_HISTORY':
+      // 글로벌 히스토리 (모든 윈도우 공유)
       try {
         const history = (await localStorage.get<any[]>('translationHistory')) || []
         port.postMessage({ type: 'TRANSLATION_HISTORY_RESPONSE', success: true, history })
@@ -119,22 +204,62 @@ async function handleSidePanelMessage(
       }
       break
 
+    case 'GET_WINDOW_STATE':
+      // 윈도우별 현재 상태 반환
+      port.postMessage({
+        type: 'WINDOW_STATE_RESPONSE',
+        payload: {
+          windowId,
+          currentTranslation: state.currentTranslation,
+          currentChat: state.currentChat,
+          sourceUrl: state.sourceUrl,
+          sourceTitle: state.sourceTitle,
+        }
+      })
+      break
+
     case 'GET_CHAT_HISTORY':
-      try {
-        const history = (await localStorage.get<any[]>('chatHistory')) || []
-        port.postMessage({ type: 'CHAT_HISTORY_RESPONSE', success: true, history })
-      } catch (error) {
-        port.postMessage({ type: 'CHAT_HISTORY_RESPONSE', success: false, error: 'Failed to get chat history' })
+      // 윈도우별 채팅 (인메모리)
+      port.postMessage({
+        type: 'CHAT_HISTORY_RESPONSE',
+        success: true,
+        history: state.currentChat,
+        windowId,
+      })
+      break
+
+    case 'SAVE_CHAT_MESSAGE':
+      // 윈도우별 채팅 메시지 저장 (인메모리만)
+      if (message.payload?.message) {
+        state.currentChat.push(message.payload.message)
+        // 최대 100개 유지
+        if (state.currentChat.length > 100) {
+          state.currentChat = state.currentChat.slice(-100)
+        }
+        console.log(`Chat message saved for window ${windowId}, total: ${state.currentChat.length}`)
       }
       break
 
+    case 'CLEAR_CHAT':
+      // 윈도우별 채팅 초기화
+      state.currentChat = []
+      port.postMessage({ type: 'CHAT_CLEARED', windowId })
+      console.log(`Chat cleared for window ${windowId}`)
+      break
+
     case 'SAVE_CHAT_HISTORY':
-      try {
-        const messages = message.payload.messages.slice(-100)
-        await localStorage.set('chatHistory', messages)
-        port.postMessage({ type: 'SAVE_CHAT_HISTORY_RESPONSE', success: true })
-      } catch (error) {
-        port.postMessage({ type: 'SAVE_CHAT_HISTORY_RESPONSE', success: false, error: 'Failed to save chat history' })
+      // 레거시 지원 - 이제 인메모리로 저장
+      if (message.payload?.messages) {
+        state.currentChat = message.payload.messages.slice(-100)
+      }
+      port.postMessage({ type: 'SAVE_CHAT_HISTORY_RESPONSE', success: true })
+      break
+
+    case 'UPDATE_SOURCE_CONTEXT':
+      // 현재 소스 페이지 정보 업데이트
+      if (message.payload) {
+        state.sourceUrl = message.payload.url || null
+        state.sourceTitle = message.payload.title || null
       }
       break
 
@@ -145,22 +270,45 @@ async function handleSidePanelMessage(
 
 // Handle streaming chat connections and side panel registration
 chrome.runtime.onConnect.addListener((port) => {
-  // Side panel registration for window isolation
-  if (port.name.startsWith('sidepanel-')) {
-    const windowId = parseInt(port.name.split('-')[1], 10)
-    if (!isNaN(windowId)) {
-      console.log(`Side panel registered for window ${windowId}`)
-      windowPorts.set(windowId, port)
-
-      port.onDisconnect.addListener(() => {
-        console.log(`Side panel disconnected for window ${windowId}`)
-        windowPorts.delete(windowId)
-      })
-
-      port.onMessage.addListener(async (message) => {
-        await handleSidePanelMessage(message, windowId, port)
-      })
+  // Side panel registration for tab isolation
+  // Port name format: sidepanel-{windowId}-{tabId}
+  const sidePanelMatch = port.name.match(/^sidepanel-(\d+)-(\d+)$/)
+  if (sidePanelMatch) {
+    const windowId = parseInt(sidePanelMatch[1], 10)
+    const tabId = parseInt(sidePanelMatch[2], 10)
+    if (isNaN(windowId) || isNaN(tabId)) {
+      console.error('Invalid windowId or tabId in port name:', port.name)
+      return
     }
+
+    const key = getStateKey(windowId, tabId)
+    console.log(`Side panel registered for window ${windowId}, tab ${tabId}`)
+    tabPorts.set(key, port)
+    const state = getOrCreateTabState(windowId, tabId)
+
+    // 연결 시 초기 상태 전송
+    port.postMessage({
+      type: 'INIT_STATE',
+      payload: {
+        windowId,
+        tabId,
+        currentTranslation: state.currentTranslation,
+        currentChat: state.currentChat,
+        sourceUrl: state.sourceUrl,
+        sourceTitle: state.sourceTitle,
+      }
+    })
+
+    port.onDisconnect.addListener(() => {
+      console.log(`Side panel disconnected for window ${windowId}, tab ${tabId}`)
+      tabPorts.delete(key)
+      // 상태는 유지 (사이드 패널 다시 열면 복원)
+      // 탭 닫힐 때만 정리됨
+    })
+
+    port.onMessage.addListener(async (message) => {
+      await handleSidePanelMessage(message, windowId, tabId, port)
+    })
   }
 
   if (port.name === 'chat-stream') {
@@ -203,11 +351,13 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   // Handle different message types
   switch (message.type) {
     case 'TRANSLATE_TEXT':
-      handleTranslation(message.payload, sendResponse, sender.tab?.windowId)
+      handleTranslation(message.payload, sendResponse, sender.tab?.windowId, sender.tab?.id)
       return true // Keep channel open for async response
 
     case 'OPEN_SIDE_PANEL':
-      handleOpenSidePanel(sender.tab?.windowId)
+      if (sender.tab?.windowId && sender.tab?.id) {
+        handleOpenSidePanel(sender.tab.windowId, sender.tab.id)
+      }
       break
 
     case 'UPDATE_API_KEY':
@@ -249,7 +399,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 async function handleTranslation(
   payload: any,
   sendResponse: (response: any) => void,
-  windowId?: number
+  windowId?: number,
+  tabId?: number
 ) {
   console.log('Translation requested:', payload)
 
@@ -322,14 +473,23 @@ async function handleTranslation(
       cached: false,
     })
 
-    // Notify side panel via dedicated port (window-specific)
-    if (windowId) {
-      sendToWindow(windowId, {
+    // Notify side panel via dedicated port (tab-specific)
+    if (windowId && tabId) {
+      // 탭 상태에 현재 번역 저장
+      const state = getOrCreateTabState(windowId, tabId)
+      state.currentTranslation = {
+        ...result,
+        sourceText: text,
+        timestamp: Date.now(),
+      }
+
+      sendToTab(windowId, tabId, {
         type: 'TRANSLATION_COMPLETE',
         payload: {
           ...result,
           sourceText: text,
           windowId,
+          tabId,
         },
       })
     }
@@ -343,14 +503,15 @@ async function handleTranslation(
     })
 
     // Notify side panel of error via dedicated port
-    if (windowId) {
-      sendToWindow(windowId, {
+    if (windowId && tabId) {
+      sendToTab(windowId, tabId, {
         type: 'TRANSLATION_ERROR',
         payload: {
           error: errorMessage,
           errorCode: categorizeError(error),
           sourceText: payload.text,
           windowId,
+          tabId,
         },
       })
     }
@@ -643,10 +804,21 @@ async function handleTranslationStream(
   }
 }
 
-// Open side panel
-async function handleOpenSidePanel(windowId?: number) {
-  if (windowId) {
-    await chrome.sidePanel.open({ windowId })
+// Open side panel for a specific tab
+async function handleOpenSidePanel(windowId: number, tabId: number) {
+  try {
+    // 1. 탭별 사이드 패널 경로 설정 (tabId를 query param으로 전달)
+    await chrome.sidePanel.setOptions({
+      tabId,
+      path: `sidepanel.html?windowId=${windowId}&tabId=${tabId}`,
+      enabled: true
+    })
+
+    // 2. 해당 탭에서만 사이드 패널 열기
+    await chrome.sidePanel.open({ tabId })
+    console.log(`Side panel opened for window ${windowId}, tab ${tabId}`)
+  } catch (error) {
+    console.error('Failed to open side panel:', error)
   }
 }
 
@@ -797,21 +969,24 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
     console.log('Context menu translation:', info.selectionText)
 
     const windowId = tab?.windowId
-    if (!windowId) return
+    const tabId = tab?.id
+    if (!windowId || !tabId) return
 
     // Open side panel IMMEDIATELY (must be in user gesture context)
-    handleOpenSidePanel(windowId)
+    handleOpenSidePanel(windowId, tabId)
 
     // Wait for side panel port connection, then send message directly
+    const key = getStateKey(windowId, tabId)
     const checkAndSend = (attempts = 0) => {
-      const port = windowPorts.get(windowId)
+      const port = tabPorts.get(key)
       if (port) {
-        // Send directly to this window's side panel via port
+        // Send directly to this tab's side panel via port
         port.postMessage({
           type: 'TRANSLATE_TEXT_STREAM_REQUEST',
           payload: {
             text: info.selectionText,
             windowId,
+            tabId,
             context: {
               url: tab?.url,
               title: tab?.title,
@@ -822,7 +997,7 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
         // Retry up to 20 times (2 seconds total)
         setTimeout(() => checkAndSend(attempts + 1), 100)
       } else {
-        console.warn(`Side panel port not available for window ${windowId} after 2s`)
+        console.warn(`Side panel port not available for window ${windowId}, tab ${tabId} after 2s`)
       }
     }
 
