@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { TranslationCard } from './components/TranslationView/TranslationCard'
 import { TranslationError } from './components/TranslationView/TranslationError'
 import { ChatWindow, ChatMessage } from './components/ChatInterface/ChatWindow'
@@ -71,8 +71,8 @@ function App() {
     }))
   }
 
-  // Derived chat messages for current window
-  const chatMessages = currentWindowData?.chatMessages ?? []
+  // Derived chat messages for current window (memoized to prevent useCallback deps change on every render)
+  const chatMessages = useMemo(() => currentWindowData?.chatMessages ?? [], [currentWindowData?.chatMessages])
 
   // Main port for window-specific communication with background
   const mainPortRef = useRef<chrome.runtime.Port | null>(null)
