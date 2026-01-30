@@ -157,7 +157,10 @@ function extractSurroundingText(range: Range): string {
 function handleTooltipAction(action: 'translate' | 'explain', info: SelectionInfo) {
   console.log(`Action: ${action}`, info)
 
-  // Send message to background script
+  // Open side panel IMMEDIATELY (must be in user gesture context)
+  chrome.runtime.sendMessage({ type: 'OPEN_SIDE_PANEL' })
+
+  // Send translation request (async, side panel already opening)
   chrome.runtime.sendMessage(
     {
       type: 'TRANSLATE_TEXT',
@@ -174,9 +177,6 @@ function handleTooltipAction(action: 'translate' | 'explain', info: SelectionInf
       }
 
       console.log('Translation response:', response)
-
-      // Open side panel
-      chrome.runtime.sendMessage({ type: 'OPEN_SIDE_PANEL' })
     }
   )
 

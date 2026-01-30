@@ -100,7 +100,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   // Handle different message types
   switch (message.type) {
     case 'TRANSLATE_TEXT':
-      handleTranslation(message.payload, sendResponse)
+      handleTranslation(message.payload, sendResponse, sender.tab?.windowId)
       return true // Keep channel open for async response
 
     case 'OPEN_SIDE_PANEL':
@@ -135,7 +135,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 })
 
 // Translation handler
-async function handleTranslation(payload: any, sendResponse: (response: any) => void) {
+async function handleTranslation(
+  payload: any,
+  sendResponse: (response: any) => void,
+  windowId?: number
+) {
   console.log('Translation requested:', payload)
 
   try {
@@ -210,7 +214,10 @@ async function handleTranslation(payload: any, sendResponse: (response: any) => 
     // Notify side panel (ignore errors if panel is not open)
     chrome.runtime.sendMessage({
       type: 'TRANSLATION_COMPLETE',
-      payload: result,
+      payload: {
+        ...result,
+        windowId,  // Include windowId for window-specific filtering
+      },
     }).catch(() => { /* Side panel not open, ignore */ })
   } catch (error) {
     console.error('Translation error:', error)
@@ -518,7 +525,12 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
   if (info.menuItemId === 'translate-selection' && info.selectionText) {
     console.log('Context menu translation:', info.selectionText)
 
-    // Trigger translation
+    // Open side panel IMMEDIATELY (must be in user gesture context)
+    if (tab?.windowId) {
+      handleOpenSidePanel(tab.windowId)
+    }
+
+    // Trigger translation (async, side panel already open)
     handleTranslation(
       {
         text: info.selectionText,
@@ -530,12 +542,8 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
       },
       (response) => {
         console.log('Context menu translation response:', response)
-
-        // Open side panel to show result
-        if (tab?.windowId) {
-          handleOpenSidePanel(tab.windowId)
-        }
-      }
+      },
+      tab?.windowId  // Pass windowId for window-specific side panel
     )
   }
 })

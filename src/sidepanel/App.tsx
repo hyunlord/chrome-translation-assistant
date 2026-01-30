@@ -22,11 +22,27 @@ function App() {
   const [currentTranslation, setCurrentTranslation] = useState<Translation | null>(null)
   const [history, setHistory] = useState<Translation[]>([])
   const [loading, setLoading] = useState(false)
+  const [myWindowId, setMyWindowId] = useState<number | null>(null)
 
-  // Listen for translation messages
+  // Get current window ID on mount
+  useEffect(() => {
+    chrome.windows.getCurrent().then((window) => {
+      setMyWindowId(window.id ?? null)
+      console.log('Side panel initialized for window:', window.id)
+    })
+  }, [])
+
+  // Listen for translation messages (filtered by windowId)
   useEffect(() => {
     const messageListener = (message: any) => {
       if (message.type === 'TRANSLATION_COMPLETE') {
+        // Filter by windowId - only process if this is our window's translation
+        const messageWindowId = message.payload?.windowId
+        if (messageWindowId !== undefined && myWindowId !== null && messageWindowId !== myWindowId) {
+          console.log('Ignoring translation from different window:', messageWindowId, 'my window:', myWindowId)
+          return
+        }
+
         console.log('Translation received in side panel:', message.payload)
 
         const translation: Translation = {
@@ -53,7 +69,7 @@ function App() {
     return () => {
       chrome.runtime.onMessage.removeListener(messageListener)
     }
-  }, [])
+  }, [myWindowId])
 
   // Load history on mount
   useEffect(() => {
