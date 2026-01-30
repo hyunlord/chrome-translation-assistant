@@ -37,15 +37,30 @@ const tabPorts: Map<string, chrome.runtime.Port> = new Map()
 // 윈도우별 활성 탭 추적 (side panel이 연결할 때 사용)
 const activeTabByWindow: Map<number, number> = new Map()
 
-// 활성 탭 변경 추적
-chrome.tabs.onActivated.addListener((activeInfo) => {
+// 탭별 사이드 패널 활성화 상태 추적 (Atlas 스타일 격리)
+const panelEnabledTabs: Set<number> = new Set()
+
+// 활성 탭 변경 추적 - 패널이 활성화되지 않은 탭으로 전환 시 패널 숨김
+chrome.tabs.onActivated.addListener(async (activeInfo) => {
   activeTabByWindow.set(activeInfo.windowId, activeInfo.tabId)
   console.log(`Active tab changed: window ${activeInfo.windowId}, tab ${activeInfo.tabId}`)
+
+  // 이 탭에서 패널이 활성화되어 있지 않으면 비활성화 상태 유지
+  if (!panelEnabledTabs.has(activeInfo.tabId)) {
+    try {
+      await chrome.sidePanel.setOptions({ tabId: activeInfo.tabId, enabled: false })
+    } catch (error) {
+      // 탭이 아직 로드 중일 수 있음
+      console.log('Could not set panel options for tab:', activeInfo.tabId)
+    }
+  }
 })
 
 // 탭 제거 시 활성 탭 맵 정리
 chrome.tabs.onRemoved.addListener((tabId, removeInfo) => {
   cleanupTabState(removeInfo.windowId, tabId)
+  // 패널 활성화 상태도 정리
+  panelEnabledTabs.delete(tabId)
   // 활성 탭이 삭제된 경우 맵에서도 제거
   if (activeTabByWindow.get(removeInfo.windowId) === tabId) {
     activeTabByWindow.delete(removeInfo.windowId)
@@ -898,12 +913,18 @@ async function handleTranslationStream(
   }
 }
 
-// Open side panel for a specific tab
+// Open side panel for a specific tab (Atlas-style per-tab isolation)
 async function handleOpenSidePanel(windowId: number, tabId: number) {
   try {
-    // Side panel을 특정 탭에서 열기
-    // tabId를 사용하면 해당 탭 컨텍스트에서 안정적으로 열림
+    // 1. 이 탭에서 사이드 패널 활성화
+    await chrome.sidePanel.setOptions({ tabId, enabled: true })
+
+    // 2. 패널 열기
     await chrome.sidePanel.open({ tabId })
+
+    // 3. 상태 저장
+    panelEnabledTabs.add(tabId)
+
     console.log(`Side panel opened for tab ${tabId} in window ${windowId}`)
   } catch (error) {
     console.error('Failed to open side panel:', error)
