@@ -224,12 +224,12 @@ function App() {
     }
   }, [startStreamingTranslationInternal])
 
-  // Connect to background via dedicated port for this tab
+  // Connect to background via dedicated port for this window
+  // Background will determine the active tab and send it in INIT_STATE
   useEffect(() => {
-    // 현재 윈도우와 활성 탭 정보를 직접 조회
     const initializeConnection = async () => {
       try {
-        // 1. 현재 윈도우 ID 가져오기
+        // 현재 윈도우 ID만 가져오기 (탭은 background가 결정)
         const currentWindow = await chrome.windows.getCurrent()
         const windowId = currentWindow.id
         if (!windowId) {
@@ -237,25 +237,21 @@ function App() {
           return
         }
 
-        // 2. 현재 윈도우의 활성 탭 가져오기
-        const [activeTab] = await chrome.tabs.query({ active: true, windowId })
-        const tabId = activeTab?.id
-        if (!tabId) {
-          console.error('Could not get active tab ID')
-          return
-        }
-
         setMyWindowId(windowId)
-        setMyTabId(tabId)
-        console.log(`Side panel initialized for window ${windowId}, tab ${tabId}`)
+        console.log(`Side panel connecting for window ${windowId}`)
 
-        // Connect to background with tab-specific port name
-        const port = chrome.runtime.connect({ name: `sidepanel-${windowId}-${tabId}` })
+        // Background에 연결 - windowId만 전달, tabId는 background가 결정
+        const port = chrome.runtime.connect({ name: `sidepanel-${windowId}` })
         mainPortRef.current = port
-        console.log(`Connected to background via sidepanel-${windowId}-${tabId}`)
+        console.log(`Connected to background via sidepanel-${windowId}`)
 
-        // Handle messages from background (tab-specific)
+        // Handle messages from background
         port.onMessage.addListener((message) => {
+          // INIT_STATE에서 tabId를 받아서 저장
+          if (message.type === 'INIT_STATE' && message.payload?.tabId) {
+            setMyTabId(message.payload.tabId)
+            console.log(`Received tabId ${message.payload.tabId} from background`)
+          }
           handlePortMessage(message, windowId)
         })
 

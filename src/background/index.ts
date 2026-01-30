@@ -34,6 +34,30 @@ const tabStates: Map<string, TabState> = new Map()
 // Tab-specific port registry for side panel isolation
 const tabPorts: Map<string, chrome.runtime.Port> = new Map()
 
+// 윈도우별 활성 탭 추적 (side panel이 연결할 때 사용)
+const activeTabByWindow: Map<number, number> = new Map()
+
+// 활성 탭 변경 추적
+chrome.tabs.onActivated.addListener((activeInfo) => {
+  activeTabByWindow.set(activeInfo.windowId, activeInfo.tabId)
+  console.log(`Active tab changed: window ${activeInfo.windowId}, tab ${activeInfo.tabId}`)
+})
+
+// 탭 제거 시 활성 탭 맵 정리
+chrome.tabs.onRemoved.addListener((tabId, removeInfo) => {
+  cleanupTabState(removeInfo.windowId, tabId)
+  // 활성 탭이 삭제된 경우 맵에서도 제거
+  if (activeTabByWindow.get(removeInfo.windowId) === tabId) {
+    activeTabByWindow.delete(removeInfo.windowId)
+  }
+})
+
+// 윈도우 제거 시 정리
+chrome.windows.onRemoved.addListener((windowId) => {
+  cleanupWindowTabs(windowId)
+  activeTabByWindow.delete(windowId)
+})
+
 // 탭 상태 키 생성 (windowId-tabId)
 function getStateKey(windowId: number, tabId: number): string {
   return `${windowId}-${tabId}`
@@ -269,9 +293,79 @@ async function handleSidePanelMessage(
 }
 
 // Handle streaming chat connections and side panel registration
-chrome.runtime.onConnect.addListener((port) => {
-  // Side panel registration for tab isolation
-  // Port name format: sidepanel-{windowId}-{tabId}
+chrome.runtime.onConnect.addListener(async (port) => {
+  // Side panel registration - supports two formats:
+  // 1. sidepanel-{windowId} - side panel will get tabId from background
+  // 2. sidepanel-{windowId}-{tabId} - explicit tab (legacy support)
+
+  // Format 1: sidepanel-{windowId} (새 방식 - background가 활성 탭 제공)
+  const windowOnlyMatch = port.name.match(/^sidepanel-(\d+)$/)
+  if (windowOnlyMatch) {
+    const windowId = parseInt(windowOnlyMatch[1], 10)
+    if (isNaN(windowId)) {
+      console.error('Invalid windowId in port name:', port.name)
+      return
+    }
+
+    // 해당 윈도우의 활성 탭 조회
+    let tabId = activeTabByWindow.get(windowId)
+    if (!tabId) {
+      // 캐시에 없으면 직접 조회
+      try {
+        const [activeTab] = await chrome.tabs.query({ active: true, windowId })
+        tabId = activeTab?.id
+      } catch (error) {
+        console.error('Failed to query active tab:', error)
+      }
+    }
+
+    if (!tabId) {
+      console.error('Could not determine active tab for window:', windowId)
+      // 폴백: 윈도우의 첫 번째 탭 사용
+      try {
+        const tabs = await chrome.tabs.query({ windowId })
+        tabId = tabs[0]?.id
+      } catch (error) {
+        console.error('Failed to get any tab for window:', error)
+        return
+      }
+    }
+
+    if (!tabId) {
+      console.error('No tab found for window:', windowId)
+      return
+    }
+
+    const key = getStateKey(windowId, tabId)
+    console.log(`Side panel registered for window ${windowId}, tab ${tabId} (auto-detected)`)
+    tabPorts.set(key, port)
+    const state = getOrCreateTabState(windowId, tabId)
+
+    // 연결 시 초기 상태 전송 (탭 ID 포함)
+    port.postMessage({
+      type: 'INIT_STATE',
+      payload: {
+        windowId,
+        tabId,
+        currentTranslation: state.currentTranslation,
+        currentChat: state.currentChat,
+        sourceUrl: state.sourceUrl,
+        sourceTitle: state.sourceTitle,
+      }
+    })
+
+    port.onDisconnect.addListener(() => {
+      console.log(`Side panel disconnected for window ${windowId}, tab ${tabId}`)
+      tabPorts.delete(key)
+    })
+
+    port.onMessage.addListener(async (message) => {
+      await handleSidePanelMessage(message, windowId, tabId, port)
+    })
+    return
+  }
+
+  // Format 2: sidepanel-{windowId}-{tabId} (기존 방식 - 호환성)
   const sidePanelMatch = port.name.match(/^sidepanel-(\d+)-(\d+)$/)
   if (sidePanelMatch) {
     const windowId = parseInt(sidePanelMatch[1], 10)
