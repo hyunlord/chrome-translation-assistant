@@ -899,12 +899,12 @@ async function handleTranslationStream(
 }
 
 // Open side panel for a specific tab
-async function handleOpenSidePanel(windowId: number, _tabId: number) {
+async function handleOpenSidePanel(windowId: number, tabId: number) {
   try {
-    // Side panel을 윈도우에서 열기
-    // Side panel이 열리면 자체적으로 현재 활성 탭을 조회하여 연결
-    await chrome.sidePanel.open({ windowId })
-    console.log(`Side panel opened for window ${windowId}`)
+    // Side panel을 특정 탭에서 열기
+    // tabId를 사용하면 해당 탭 컨텍스트에서 안정적으로 열림
+    await chrome.sidePanel.open({ tabId })
+    console.log(`Side panel opened for tab ${tabId} in window ${windowId}`)
   } catch (error) {
     console.error('Failed to open side panel:', error)
   }
