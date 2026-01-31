@@ -955,14 +955,14 @@ async function handleTranslationStream(
 // Open side panel for a specific tab (Atlas-style per-tab isolation)
 async function handleOpenSidePanel(windowId: number, tabId: number) {
   try {
-    // 1. 이 탭에서 패널 활성화
-    await chrome.sidePanel.setOptions({
+    // 1. 이 탭에서 패널 활성화 (await 없이 - user gesture 유지)
+    chrome.sidePanel.setOptions({
       tabId,
       path: 'sidepanel.html',
       enabled: true
     })
 
-    // 2. 탭별 패널 열기 (tabId 사용)
+    // 2. 탭별 패널 열기 (즉시 호출하여 user gesture 컨텍스트 유지)
     await chrome.sidePanel.open({ tabId })
 
     // 3. 탭 추적
