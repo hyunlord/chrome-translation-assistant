@@ -1,6 +1,6 @@
 {
   "name": "chrome-translation-assistant",
-  "version": "1.0.22",
+  "version": "1.0.23",
   "description": "AI-powered translation assistant with multi-provider support",
   "type": "module",
   "scripts": {
