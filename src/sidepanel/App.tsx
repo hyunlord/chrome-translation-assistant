@@ -103,34 +103,38 @@ function App() {
       payload: { text, windowId },
     })
 
+    let accumulatedText = ''
+
     port.onMessage.addListener((message) => {
       if (message.type === 'TRANSLATION_STREAM_CHUNK') {
+        // 청크 누적 (SSE 스타일)
+        accumulatedText += message.chunk
         updateWindowData(windowId, {
-          streamingText: message.payload.text,
-          isStreaming: !message.payload.done,
+          streamingText: accumulatedText,
+          isStreaming: true,
         })
-        if (message.payload.done) {
-          // Create final translation object
-          const finalTranslation: Translation = {
-            id: crypto.randomUUID(),
-            sourceText: text,
-            translatedText: message.payload.text,
-            sourceLang: message.payload.sourceLang || 'auto',
-            targetLang: message.payload.targetLang || 'ko',
-            provider: message.payload.provider || 'unknown',
-            timestamp: Date.now(),
-          }
-          updateWindowData(windowId, {
-            translation: finalTranslation,
-            isStreaming: false,
-          })
-          port.disconnect()
+      } else if (message.type === 'TRANSLATION_STREAM_DONE') {
+        // 스트리밍 완료 - 최종 번역 객체 생성
+        const finalTranslation: Translation = {
+          id: crypto.randomUUID(),
+          sourceText: text,
+          translatedText: message.fullText,
+          sourceLang: message.sourceLang || 'auto',
+          targetLang: message.targetLang || 'ko',
+          provider: message.provider || 'unknown',
+          timestamp: Date.now(),
         }
-      } else if (message.type === 'TRANSLATION_ERROR') {
+        updateWindowData(windowId, {
+          translation: finalTranslation,
+          streamingText: message.fullText,
+          isStreaming: false,
+        })
+        port.disconnect()
+      } else if (message.type === 'TRANSLATION_STREAM_ERROR') {
         updateWindowData(windowId, {
           error: {
-            message: message.payload?.error || 'Translation failed',
-            errorCode: message.payload?.errorCode || 'UNKNOWN',
+            message: message.error || 'Translation failed',
+            errorCode: 'STREAM_ERROR',
             sourceText: text,
           },
           isStreaming: false,
