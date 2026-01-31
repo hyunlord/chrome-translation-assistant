@@ -1,14 +1,18 @@
 function Popup() {
   const openSidePanel = async () => {
     try {
-      // Get current tab and open side panel for that specific tab
+      // Get current tab and window
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true })
-      if (tab?.id) {
-        // 1. Enable the panel for this tab (doesn't require user gesture)
-        await chrome.sidePanel.setOptions({ tabId: tab.id, enabled: true })
+      if (tab?.id && tab?.windowId) {
+        // 1. Enable the panel for this tab with explicit path
+        await chrome.sidePanel.setOptions({
+          tabId: tab.id,
+          path: 'sidepanel.html',
+          enabled: true
+        })
 
-        // 2. Open the panel (requires user gesture - we have it here in popup click)
-        await chrome.sidePanel.open({ tabId: tab.id })
+        // 2. Open the panel using windowId (more reliable than tabId)
+        await chrome.sidePanel.open({ windowId: tab.windowId })
 
         // 3. Tell background to track this tab in panelEnabledTabs
         chrome.runtime.sendMessage({

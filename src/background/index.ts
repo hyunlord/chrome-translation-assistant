@@ -929,11 +929,15 @@ async function handleTranslationStream(
 // Open side panel for a specific tab (Atlas-style per-tab isolation)
 async function handleOpenSidePanel(windowId: number, tabId: number) {
   try {
-    // 1. 이 탭에서 사이드 패널 활성화
-    await chrome.sidePanel.setOptions({ tabId, enabled: true })
+    // 1. 이 탭에서 사이드 패널 활성화 (path 명시)
+    await chrome.sidePanel.setOptions({
+      tabId,
+      path: 'sidepanel.html',
+      enabled: true
+    })
 
-    // 2. 패널 열기
-    await chrome.sidePanel.open({ tabId })
+    // 2. 패널 열기 (windowId 사용이 더 안정적)
+    await chrome.sidePanel.open({ windowId })
 
     // 3. 상태 저장
     panelEnabledTabs.add(tabId)
