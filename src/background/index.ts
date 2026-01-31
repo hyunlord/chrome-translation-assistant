@@ -905,6 +905,9 @@ async function handleTranslationStream(
     let fullText = ''
 
     for await (const chunk of stream) {
+      // undefined 방어 (스트림 끝난 후 발생 가능)
+      if (!chunk) break
+
       if (chunk.text) {
         fullText += chunk.text
         port.postMessage({
@@ -936,6 +939,8 @@ async function handleTranslationStream(
           provider: providerType,
           cached: false,
         })
+
+        break  // 스트리밍 완료 후 루프 종료
       }
     }
   } catch (error) {
