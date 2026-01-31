@@ -289,7 +289,7 @@ async function handleSidePanelMessage(
       break
 
     case 'SAVE_CHAT_MESSAGE':
-      // 윈도우별 채팅 메시지 저장 (인메모리만)
+      // 윈도우별 채팅 메시지 저장
       if (message.payload?.message) {
         state.currentChat.push(message.payload.message)
         // 최대 100개 유지
@@ -297,6 +297,20 @@ async function handleSidePanelMessage(
           state.currentChat = state.currentChat.slice(-100)
         }
         console.log(`Chat message saved for window ${windowId}, total: ${state.currentChat.length}`)
+
+        // Chrome storage에도 persist (히스토리용)
+        try {
+          const chatHistory = await localStorage.get<any[]>('chatHistory') || []
+          chatHistory.push({
+            ...message.payload.message,
+            windowId,
+            tabId,
+          })
+          // 최근 200개만 유지
+          await localStorage.set('chatHistory', chatHistory.slice(-200))
+        } catch (e) {
+          console.error('Failed to persist chat message:', e)
+        }
       }
       break
 

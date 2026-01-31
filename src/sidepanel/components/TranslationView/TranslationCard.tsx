@@ -1,5 +1,6 @@
 // Translation Card Component
 import React from 'react'
+import { MarkdownRenderer } from '../MarkdownRenderer'
 
 interface TranslationCardProps {
   sourceText: string
@@ -105,10 +106,8 @@ export function TranslationCard({
         </div>
 
         {/* Translated Text */}
-        <div>
-          <div className="text-base text-gray-900 dark:text-gray-100 leading-relaxed whitespace-pre-wrap">
-            {translatedText}
-          </div>
+        <div className="text-base text-gray-900 dark:text-gray-100">
+          <MarkdownRenderer content={translatedText} />
         </div>
       </div>
 

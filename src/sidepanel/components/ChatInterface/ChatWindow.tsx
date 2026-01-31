@@ -1,5 +1,6 @@
 // Chat Window Component - Props-based for window isolation
 import React, { useState, useRef, useEffect } from 'react'
+import { MarkdownRenderer } from '../MarkdownRenderer'
 
 export interface ChatMessage {
   id: string
@@ -34,6 +35,7 @@ export function ChatWindow({
   const [streamingMessageId, setStreamingMessageId] = useState<string | null>(null)
   const [streamingContent, setStreamingContent] = useState('')
   const [isComposing, setIsComposing] = useState(false) // IME composition state
+  const [pendingUserMessage, setPendingUserMessage] = useState<ChatMessage | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const scrollContainerRef = useRef<HTMLDivElement>(null)
   const shouldAutoScroll = useRef(true)
@@ -104,6 +106,7 @@ export function ChatWindow({
 
     // Send user message to parent
     onSendMessage(userMessage)
+    setPendingUserMessage(userMessage) // 즉시 UI에 표시
     setInput('')
     setSending(true)
 
@@ -203,18 +206,34 @@ export function ChatWindow({
     }
   }
 
-  // Combine messages with streaming content
-  const displayMessages = streaming && streamingMessageId
-    ? [
-        ...messages,
-        {
-          id: streamingMessageId,
-          role: 'assistant' as const,
-          content: streamingContent,
-          timestamp: Date.now(),
-        },
-      ]
-    : messages
+  // Clear pending user message when it appears in messages prop
+  useEffect(() => {
+    if (pendingUserMessage && messages.some(m => m.id === pendingUserMessage.id)) {
+      setPendingUserMessage(null)
+    }
+  }, [messages, pendingUserMessage])
+
+  // Combine messages with pending user message and streaming content
+  const displayMessages = React.useMemo(() => {
+    const result = [...messages]
+
+    // 아직 parent에 반영 안된 유저 메시지 추가
+    if (pendingUserMessage && !messages.some(m => m.id === pendingUserMessage.id)) {
+      result.push(pendingUserMessage)
+    }
+
+    // 스트리밍 중인 어시스턴트 메시지 추가
+    if (streaming && streamingMessageId) {
+      result.push({
+        id: streamingMessageId,
+        role: 'assistant' as const,
+        content: streamingContent,
+        timestamp: Date.now(),
+      })
+    }
+
+    return result
+  }, [messages, pendingUserMessage, streaming, streamingMessageId, streamingContent])
 
   return (
     <div className="flex flex-col h-full">
@@ -260,7 +279,9 @@ export function ChatWindow({
                   : 'bg-white dark:bg-gray-800 text-gray-900 dark:text-white border border-gray-200 dark:border-gray-700'
               }`}
             >
-              <div className="whitespace-pre-wrap break-words">{message.content}</div>
+              <div className="break-words">
+                <MarkdownRenderer content={message.content} />
+              </div>
               <div
                 className={`text-xs mt-1 ${
                   message.role === 'user'
