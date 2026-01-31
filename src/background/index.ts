@@ -40,20 +40,10 @@ const activeTabByWindow: Map<number, number> = new Map()
 // 탭별 사이드 패널 활성화 상태 추적 (Atlas 스타일 격리)
 const panelEnabledTabs: Set<number> = new Set()
 
-// 활성 탭 변경 추적 - 패널이 활성화되지 않은 탭으로 전환 시 패널 숨김
+// 활성 탭 변경 추적
 chrome.tabs.onActivated.addListener(async (activeInfo) => {
   activeTabByWindow.set(activeInfo.windowId, activeInfo.tabId)
   console.log(`Active tab changed: window ${activeInfo.windowId}, tab ${activeInfo.tabId}`)
-
-  // 이 탭에서 패널이 활성화되어 있지 않으면 비활성화 상태 유지
-  if (!panelEnabledTabs.has(activeInfo.tabId)) {
-    try {
-      await chrome.sidePanel.setOptions({ tabId: activeInfo.tabId, enabled: false })
-    } catch (error) {
-      // 탭이 아직 로드 중일 수 있음
-      console.log('Could not set panel options for tab:', activeInfo.tabId)
-    }
-  }
 })
 
 // 탭 제거 시 활성 탭 맵 정리
@@ -929,17 +919,11 @@ async function handleTranslationStream(
 // Open side panel for a specific tab (Atlas-style per-tab isolation)
 async function handleOpenSidePanel(windowId: number, tabId: number) {
   try {
-    // 1. 이 탭에서 사이드 패널 활성화 (path 명시)
-    await chrome.sidePanel.setOptions({
-      tabId,
-      path: 'sidepanel.html',
-      enabled: true
-    })
-
-    // 2. 패널 열기 (windowId 사용이 더 안정적)
+    // manifest.json의 default_path 사용하여 바로 열기
+    // content script/context menu에서 호출됨 (user gesture context)
     await chrome.sidePanel.open({ windowId })
 
-    // 3. 상태 저장
+    // 탭 추적
     panelEnabledTabs.add(tabId)
 
     console.log(`Side panel opened for tab ${tabId} in window ${windowId}`)

@@ -1,39 +1,23 @@
 function Popup() {
   const openSidePanel = async () => {
     try {
-      // Get current tab and window
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true })
-      console.log('Popup: Current tab info:', tab)
+      if (!tab?.windowId) return
 
-      if (tab?.id && tab?.windowId) {
-        console.log('Popup: Setting options for tab', tab.id)
-        // 1. Enable the panel for this tab with explicit path (don't await to preserve gesture)
-        chrome.sidePanel.setOptions({
-          tabId: tab.id,
-          path: 'sidepanel.html',
-          enabled: true
-        })
+      // manifest.json의 default_path를 사용하여 바로 열기
+      await chrome.sidePanel.open({ windowId: tab.windowId })
 
-        console.log('Popup: Opening panel for window', tab.windowId)
-        // 2. Open the panel immediately (user gesture required)
-        await chrome.sidePanel.open({ windowId: tab.windowId })
-        console.log('Popup: Panel opened successfully')
-
-        // 3. Tell background to track this tab in panelEnabledTabs
+      // background에 탭 추적 요청
+      if (tab.id) {
         chrome.runtime.sendMessage({
           type: 'TRACK_PANEL_TAB',
           payload: { tabId: tab.id }
         })
-
-        // 4. Close popup
-        window.close()
-      } else {
-        console.error('Popup: No valid tab found', tab)
       }
+
+      window.close()
     } catch (error) {
-      console.error('Popup: Failed to open side panel:', error)
-      // Show error to user
-      alert('Failed to open side panel: ' + (error instanceof Error ? error.message : String(error)))
+      console.error('Failed to open side panel:', error)
     }
   }
 
