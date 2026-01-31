@@ -145,7 +145,13 @@ chrome.runtime.onInstalled.addListener(async (details) => {
     title: 'Translate "%s"',
     contexts: ['selection'],
   })
+
+  // 아이콘 클릭 시 사이드 패널 열기
+  await chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true })
 })
+
+// 서비스 워커 시작 시에도 설정 (재시작 대비)
+chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true }).catch(() => {})
 
 // Initialize AI providers from settings
 async function initializeProviders() {
