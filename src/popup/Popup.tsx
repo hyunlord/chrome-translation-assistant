@@ -3,16 +3,21 @@ function Popup() {
     try {
       // Get current tab and window
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true })
+      console.log('Popup: Current tab info:', tab)
+
       if (tab?.id && tab?.windowId) {
-        // 1. Enable the panel for this tab with explicit path
-        await chrome.sidePanel.setOptions({
+        console.log('Popup: Setting options for tab', tab.id)
+        // 1. Enable the panel for this tab with explicit path (don't await to preserve gesture)
+        chrome.sidePanel.setOptions({
           tabId: tab.id,
           path: 'sidepanel.html',
           enabled: true
         })
 
-        // 2. Open the panel using windowId (more reliable than tabId)
+        console.log('Popup: Opening panel for window', tab.windowId)
+        // 2. Open the panel immediately (user gesture required)
         await chrome.sidePanel.open({ windowId: tab.windowId })
+        console.log('Popup: Panel opened successfully')
 
         // 3. Tell background to track this tab in panelEnabledTabs
         chrome.runtime.sendMessage({
@@ -22,9 +27,13 @@ function Popup() {
 
         // 4. Close popup
         window.close()
+      } else {
+        console.error('Popup: No valid tab found', tab)
       }
     } catch (error) {
-      console.error('Failed to open side panel:', error)
+      console.error('Popup: Failed to open side panel:', error)
+      // Show error to user
+      alert('Failed to open side panel: ' + (error instanceof Error ? error.message : String(error)))
     }
   }
 
