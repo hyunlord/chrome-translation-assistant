@@ -170,13 +170,13 @@ chrome.runtime.onInstalled.addListener(async (details) => {
     title: 'Translate "%s"',
     contexts: ['selection'],
   })
-
-  // 아이콘 클릭 시 사이드 패널 열기
-  await chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true })
 })
 
-// 서비스 워커 시작 시에도 설정 (재시작 대비)
-chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true }).catch(() => {})
+// 아이콘 클릭 시 현재 탭에만 패널 열기 (탭별 격리)
+chrome.action.onClicked.addListener(async (tab) => {
+  if (!tab.id || !tab.windowId) return
+  await handleOpenSidePanel(tab.windowId, tab.id)
+})
 
 // Initialize AI providers from settings
 async function initializeProviders() {
@@ -962,8 +962,8 @@ async function handleOpenSidePanel(windowId: number, tabId: number) {
       enabled: true
     })
 
-    // 2. 패널 열기 (user gesture context 필요)
-    await chrome.sidePanel.open({ windowId })
+    // 2. 탭별 패널 열기 (tabId 사용)
+    await chrome.sidePanel.open({ tabId })
 
     // 3. 탭 추적
     panelEnabledTabs.add(tabId)
